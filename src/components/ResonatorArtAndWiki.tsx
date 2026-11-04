@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { ELEMENT_META, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators';
-import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment';
-import { drawPixelHeroSprite } from '../engine/pixelRenderer';
+import { ELEMENT_META, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
+import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment.ts';
+import { drawPixelHeroSprite } from '../engine/pixelRenderer.ts';
 
 export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: string }> = ({ hero, className = '' }) => {
   const elMeta = ELEMENT_META[hero.element];
@@ -44,8 +44,8 @@ export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: str
         strokeWidth="1.5"
       />
 
-      {/* Special Back Silhouettes (Nine Tails for Kahori / Valkyrie Wings for Aurelia / Railgun Pack for Caelum) */}
-      {hero.id === 'H04' && (
+      {/* Special Back Silhouettes (Nine Tails for Kahori H10 / Valkyrie Wings for Aurelia H13) */}
+      {hero.id === 'H10' && (
         <g fill="#fde047" fillOpacity="0.82" stroke="#ca8a04" strokeWidth="1.2">
           <path d="M125,240 Q45,170 65,120 Q110,155 135,220 Z" />
           <path d="M120,255 Q30,220 40,165 Q95,195 130,240 Z" />
@@ -53,7 +53,7 @@ export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: str
           <path d="M240,255 Q330,220 320,165 Q265,195 230,240 Z" />
         </g>
       )}
-      {hero.id === 'H05' && (
+      {hero.id === 'H13' && (
         <g fill="#fef3c7" fillOpacity="0.88" stroke="#f59e0b" strokeWidth="1.5">
           <path d="M135,190 Q40,110 30,175 Q70,215 135,225 Z" />
           <path d="M225,190 Q320,110 330,175 Q290,215 225,225 Z" />
@@ -93,31 +93,31 @@ export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: str
           <line x1="85" y1="315" x2="285" y2="115" stroke="#fef08a" strokeWidth="4" />
         </g>
       )}
-      {hero.id === 'H02' && (
+      {hero.id === 'H04' && (
         <g>
           <rect x="215" y="165" width="58" height="135" rx="8" fill="#1e293b" stroke="#38bdf8" strokeWidth="3" />
           <line x1="75" y1="245" x2="255" y2="195" stroke="#c084fc" strokeWidth="8" />
         </g>
       )}
-      {hero.id === 'H03' && (
+      {hero.id === 'H07' && (
         <g>
           <line x1="255" y1="105" x2="225" y2="355" stroke="#38bdf8" strokeWidth="5" />
           <polygon points="255,75 275,105 255,135 235,105" fill="#e0f2fe" stroke="#0284c7" strokeWidth="2" />
         </g>
       )}
-      {hero.id === 'H04' && (
+      {hero.id === 'H10' && (
         <g>
           <path d="M90,260 Q180,210 275,245" fill="none" stroke="#34d399" strokeWidth="6" />
           <path d="M105,280 Q185,235 265,265" fill="none" stroke="#a7f3d0" strokeWidth="3" />
         </g>
       )}
-      {hero.id === 'H05' && (
+      {hero.id === 'H13' && (
         <g>
           <path d="M115,135 Q75,220 115,305" fill="none" stroke="#fbbf24" strokeWidth="5" />
           <line x1="115" y1="135" x2="115" y2="305" stroke="#fef3c7" strokeWidth="1.5" />
         </g>
       )}
-      {hero.id === 'H06' && (
+      {hero.id === 'H16' && (
         <g>
           <line x1="105" y1="340" x2="245" y2="110" stroke="#cbd5e1" strokeWidth="6" />
           <path d="M245,110 Q315,125 285,195 Q255,155 230,135 Z" fill="#f43f5e" />
@@ -167,10 +167,10 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
           <div>
             <h2 className="text-lg font-bold text-slate-100 font-display">
-              Chrono Spire: Starfall Protocol — Official Game Wiki & Balance Sheet (v2.0)
+              Chrono Spire: Starfall Protocol — Official Game Wiki & Balance Sheet (v2.1)
             </h2>
             <p className="text-xs text-slate-400">
-              Single Source of Truth: 6 Continents · 4 Formations · 6 Elements & 4 Reactions · +15 Fail Stack Pity · Multi-Part Old Gods
+              Single Source of Truth: 18 Day-1 Resonators · 5-Slot Gear · 4 Formations · 9 Reactions · +15 Fail Stack Pity · 40 Constellation Nodes
             </p>
           </div>
           <button
@@ -182,10 +182,10 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-8 text-xs text-slate-300">
-          {/* Section 1: 6 Resonators Base Stats Table */}
+          {/* Section 1: 18 Resonators Base Stats Table */}
           <section>
             <h3 className="text-sm font-semibold text-amber-300 mb-3">
-              01. Base Stats & Continent Roster (Lv.1 / Lv.100 & 5-Star Capstone)
+              01. Base Stats & 18 Day-1 Resonator Roster (Lv.1 / Lv.100 & 5-Star Capstone)
             </h3>
             <div className="overflow-x-auto border border-slate-800 rounded-lg">
               <table className="w-full text-left border-collapse font-mono tabular-nums">

@@ -1,5 +1,5 @@
-import { BossPartUnit, CombatHeroUnit, FloatingText } from './combatEngine';
-import { ELEMENT_META, ResonatorData } from '../data/resonators';
+import { BossPartUnit, CombatHeroUnit, FloatingText } from './combatEngine.ts';
+import { ELEMENT_META, ResonatorData } from '../data/resonators.ts';
 
 export interface Particle {
   x: number;
@@ -45,13 +45,13 @@ export function drawPixelHeroSprite(
 
   // Cloak / Back accessory (Wing or Fox tails or Cape)
   ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.primary;
-  if (hero.id === 'H04') {
-    // Nine-tailed wind fox tails
+  if (hero.id === 'H10') {
+    // Nine-tailed wind fox tails (Kahori)
     ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#fde047';
     ctx.fillRect(-7 * p, -2 * p, 3 * p, 6 * p);
     ctx.fillRect(-9 * p, 0, 3 * p, 5 * p);
-  } else if (hero.id === 'H05') {
-    // Valkyrie Light Wings
+  } else if (hero.id === 'H13') {
+    // Valkyrie Light Wings (Aurelia)
     ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#fef08a';
     ctx.fillRect(-8 * p, -6 * p, 4 * p, 7 * p);
     ctx.fillRect(-10 * p, -4 * p, 2 * p, 4 * p);
@@ -86,30 +86,30 @@ export function drawPixelHeroSprite(
   ctx.fillRect(-4 * p, -10 * p, 8 * p, 3 * p);
   ctx.fillRect(-4 * p, -8 * p, 2 * p, 4 * p);
 
-  // Fox ears for Kahori or Halo for Aurelia
-  if (hero.id === 'H04') {
+  // Fox ears for Kahori (H10) or Halo for Aurelia (H13)
+  if (hero.id === 'H10') {
     ctx.fillRect(-3 * p, -12 * p, 2 * p, 2 * p);
     ctx.fillRect(1 * p, -12 * p, 2 * p, 2 * p);
-  } else if (hero.id === 'H05') {
+  } else if (hero.id === 'H13') {
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(-3 * p, -13 * p, 6 * p, 1 * p);
   }
 
   // Weapon (Right hand forward)
   ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.weapon;
-  if (hero.id === 'H02') {
-    // Heavy Tower Shield + Railgun Lance
+  if (hero.id === 'H04') {
+    // Heavy Tower Shield + Railgun Lance (Caelum)
     ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#38bdf8';
     ctx.fillRect(3 * p, -4 * p, 3 * p, 9 * p);
     ctx.fillStyle = hero.colors.weapon;
     ctx.fillRect(5 * p, -2 * p, 8 * p, 2 * p);
   } else if (hero.id === 'H01') {
-    // Flame Greatsword
+    // Flame Greatsword (Kallen)
     ctx.fillRect(4 * p, -7 * p, 2 * p, 10 * p);
     ctx.fillStyle = '#fde047';
     ctx.fillRect(3 * p, 1 * p, 4 * p, 1.5 * p);
-  } else if (hero.id === 'H06') {
-    // Abyssal Chain Scythe
+  } else if (hero.id === 'H16') {
+    // Abyssal Chain Scythe (Noctis)
     ctx.fillRect(4 * p, -8 * p, 1.5 * p, 12 * p);
     ctx.fillRect(4 * p, -8 * p, 6 * p, 2 * p);
   } else {
