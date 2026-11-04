@@ -1,0 +1,773 @@
+﻿CHRONO SPIRE: STARFALL PROTOCOL — Master Blueprint, Game Wiki & Single Source of Truth (v2.0)
+เอกสารฉบับนี้คือ Single Source of Truth (SSOT) และ Game Wiki กลางของโปรเจกต์ Chrono Spire: Starfall Protocol สำหรับให้ทีมใช้อ้างอิงร่วมกัน ใช้เป็นข้อมูล Wiki สำหรับผู้เล่น และใช้ดึงตารางตัวเลขไปทำ Spreadsheet บาลานซ์ตัวละคร รวมถึงป้อนให้ Claude AI อัปเดตโค้ดตัวเกมได้ทันที
+MODULE 1: PROJECT OVERVIEW, WORLD LORE (6 CONTINENTS & OLD GODS) & ROADMAP
+1.1 ข้อมูลภาพรวมโปรเจกต์ (Core Identity)
+* ชื่อโปรเจกต์: Chrono Spire: Starfall Protocol (บันทึกหอคอยย้อนเวลา)
+* แนวเกม: HD-2D Pixel Tactical Idle RPG + Roguelite Tower Climber + Anime Gacha Collection
+* ขนาดปาร์ตี้: ทีม 5 คน (5-Hero Squad) ปรับแผนการยืนได้ 4 รูปแบบ (1-4, 2-3, 3-2, 4-1)
+* แพลตฟอร์มเป้าหมาย: Web Browser (HTML5), PC Desktop Client (Windows/Mac via Tauri), Android Mobile (Google Play Store via CapacitorJS)
+* โครงสร้างหน้าจอหลัก (5 Main Navigation Tabs):
+   * 1. TOWER BATTLE: สนามรบทีม 5 คน, ปุ่มสลับผังรบ 4 แบบ, เกจ Boss Stagger 5 ช่อง, ระบบคลิกเลือกเป้าโฟกัส (Tap-to-Focus), ฉาก Ultimate Cut-In (พร้อมระบบทับอันเก่าทันทีและปุ่มเปิด/ปิด Cut-In) และ Pop-up เลือกไพ่พรทุก 5 ชั้น
+   * 2. HEROES & GAMBIT: คลังตัวละคร SSR/SR แยกตาม 6 ทวีปและ 5 Roles, หน้าสเตตัส 8+3 ค่า, อัปเลเวลสกิล/อัปดาว (2 ดาว ถึง 5 ดาว), อัปเลเวลแผนการยืน (Lv.1 ถึง Lv.10) และตั้งค่า 2-Slot Gambit
+   * 3. EQUIPMENT & FORGE: อุปกรณ์สวมใส่ 4 ช่อง, ระบบตีบวกแยกชิ้น (+0 ถึง +15) พร้อมระบบสะสมโอกาสติดเมื่อตีพลาด (Fail Stack Pity) และโบนัสเซ็ต 8 เซ็ต
+   * 4. SUMMON: ตู้กาชา 3 โซนไม่ทับซ้อน (ซ้าย: สลับตู้, กลาง: 3D Splash Art เต็มตัว, ขวา: In-Combat Pixel 2D Preview)
+   * 5. CHRONO REWIND: ระบบย้อนเวลาจุติรับ Time Shards อัปเกรดผังกลุ่มดาวถาวรทั้งไอดี
+1.2 เนื้อเรื่องหลัก, โครงสร้างโลกทั้ง 6 ทวีป และบอสเทพบรรพกาล (The Old Gods)
+* แกนเนื้อเรื่องหอคอย Chrono Spire: หอคอยโบราณที่ตั้งอยู่ใจกลางโลกเพื่อสะกด เทพบรรพกาล (The Old Gods) สิ่งมีชีวิตระดับมิติ Cosmic Horror เมื่อผนึกเริ่มแตกร้าว อำนาจของเทพบรรพกาลได้ดูดกลืนสภาพแวดล้อมและอารยธรรมจากทั้ง 6 ทวีปเข้าไปกลายเป็นชั้นต่างๆ ของหอคอย นักรบผู้ถูกเลือกจากทั้ง 6 ทวีปจึงต้องร่วมมือกันไต่หอคอย และใช้พลัง ย้อนเวลา (Chrono Rewind) เมื่อพ่ายแพ้ต่อการกัดกร่อนจิตใจ (Mental Corruption)
+รหัสทวีป
+	ชื่อทวีป (Continent / Region)
+	คอนเซปต์และอารยธรรม (Society & Visual Design Theme)
+	ตัวละครหลักประจำทวีป
+	Region 1
+	ทวีปป่า (The Verdant Wilds)
+	ผืนป่าโบราณและต้นไม้ยักษ์ มนุษย์และชนเผ่าครึ่งสัตว์ (Beastkin) อาศัยร่วมกับวิญญาณธรรมชาติ ชุดเน้นลวดลายใบไม้ ขนสัตว์ และอาวุธวิญญาณป่า
+	Kahori Amakusa (SSR Wind)
+	Region 2
+	ทวีปกลาง (The Central Imperium)
+	มหาอาณาจักรมนุษย์ ศูนย์กลางการค้าและกองทัพหลวง ชุดเกราะอัศวินประณีต เครื่องแบบทหารชั้นสูง และดาบตราจักรวรรดิ
+	Kallen Vermillion (SSR Fire)
+	Region 3
+	ทวีปเครื่องจักร (The Techno-Savant Realm)
+	อารยธรรมวิทยาศาสตร์ผสานเวทมนตร์ (Magitek) ชุดเกราะวิศวกรรมเวท อาวุธหอกและปืนพลังงานขับเคลื่อนด้วยแกนเวท
+	Caelum Vance (SSR Electro)
+	Region 4
+	ทวีปน้ำแข็ง (The Frostbound Tundra)
+	ดินแดนหิมะนิรันดร์ของผู้ทรหดและนักล่าสัตว์ใหญ่ ชุดคลุมกันหนาวประดับคริสตัลน้ำแข็งและเวทดวงดาวฤดูหนาว
+	Yuzuki Hoshino (SSR Cryo)
+	Region 5
+	ทวีปแสง (The Aetherial Sanctuary)
+	วิหารบนเกาะลอยฟ้าและอารยธรรมแห่งศรัทธา ชุดนักบวชชั้นสูง อัศวินวัลคีรีปีกแสง และอาวุธทองคำศักดิ์สิทธิ์
+	Aurelia Solis (SSR Light)
+	Region 6
+	ทวีปมืด (The Abyssal Shadowlands)
+	ดินแดนไร้แสงอาทิตย์ที่เต็มไปด้วยผลึกเวทมืดและสิ่งมีชีวิตกลายพันธุ์ ชุดนักฆ่าคลุมฮู้ดและอาวุธพลังงานเงามืด
+	Noctis Ravenlock (SR Dark)
+	1.3 การแบ่งบทบาทตัวละครทั้ง 5 สาย (5 Combat Roles)
+* 1. Tank (แทงค์ — แถวหน้า): รับความเสียหาย ดึงความสนใจ กางโล่ และทุบเกราะ Stagger บอส
+* 2. Melee DPS (ดีลเลอร์ระยะประชิด — แถวหน้า): นักสู้ประชิดตัวชน รีดดาเมจต่อเนื่องและเจาะแนวหน้า
+* 3. Ranged DPS (ดีลเลอร์ระยะไกล — แถวหลัง): โจมตีไกลแม่นยำ ทำดาเมจเดี่ยวหรือล้วงสังหารจากแนวหลัง
+* 4. Support & Healer (ซัพพอร์ต / ฮีลเลอร์ — แถวหลัง): ฟื้นฟูเลือด เปลี่ยนฮีลล้นเป็นโล่ และมอบบัฟเร่งพลังให้ทีม
+* 5. Debuffer (ดีบัฟเฟอร์ — แถวหลัง): แปะสถานะผิดปกติประจำธาตุ ลดเกราะ และหยุดการเคลื่อนไหวศัตรูด้วยค่า Effect Hit Rate
+MODULE 2: COMBAT SYSTEM, 5-HERO FORMATIONS, TARGETING, BREAK & BERSERK
+2.1 ระบบจัดแผนรบทีม 5 คน (4 Tactical Formations) และการอัปเลเวลแผนรบ (Lv.1 ถึง Lv.10)
+ผู้เล่นจัดทีมลงสนามได้ 5 คน และสามารถสลับแผนการยืนได้ 4 รูปแบบ โดยใช้กฎสมมาตรเดียวกันทั้งหมดคือ "ยืนแถวหน้าได้ +DEF% / ยืนแถวหลังได้ +ATK%" (งบรวมของแต่ละแถวเริ่มที่ 12% ที่ Lv.1 และเพิ่มเป็น 30% ที่ Lv.10 หารตามจำนวนคนที่ยืนในแถวนั้น):
+ชื่อแผนการยืน (Formation)
+	โครงสร้างการยืน
+	โบนัสแถวหน้าต่อคน (Lv.1 ถึง Lv.10)
+	โบนัสแถวหลังต่อคน (Lv.1 ถึง Lv.10)
+	จุดเด่นเชิงกลยุทธ์
+	1. Hyper-Carry (หน้า 4 / หลัง 1)
+	หน้า 4 คน / หลัง 1 คน
+	DEF +3.0% ถึง +7.5%
+	ATK +12.0% ถึง +30.0%
+	ปั้นตัวทำดาเมจหลักยืนหลัง 1 คนให้แรงสุดขีด โดยมีแถวหน้า 4 คนช่วยกันบัง
+	2. Solo Bastion (หน้า 1 / หลัง 4)
+	หน้า 1 คน / หลัง 4 คน
+	DEF +12.0% ถึง +30.0%
+	ATK +3.0% ถึง +7.5%
+	อัดความถึกให้แทงค์หลักยืนค้ำเดี่ยวหน้าบอส แล้ววางตัวตีไกลและซัพพอร์ตหลัง 4 คน
+	3. Balanced (หน้า 2 / หลัง 3)
+	หน้า 2 คน / หลัง 3 คน
+	DEF +6.0% ถึง +15.0%
+	ATK +4.0% ถึง +10.0%
+	สมดุลมาตรฐาน ใส่ครบ 5 Roles (Tank + Melee DPS หน้า / Ranged + Debuffer + Healer หลัง)
+	4. Vanguard (หน้า 3 / หลัง 2)
+	หน้า 3 คน / หลัง 2 คน
+	DEF +4.0% ถึง +10.0%
+	ATK +6.0% ถึง +15.0%
+	ส่งสายประชิดขึ้นหน้า 3 คนช่วยกันแชร์ดาเมจและรุมทุบเกราะบอส
+	2.2 ระบบการเล็งเป้า 3 ชั้น (3-Layer Targeting System)
+* 1. กฎพื้นฐาน (Default Front-to-Back & Tank Priority): การโจมตีปกติของฮีโร่ทุกตัวจะเล็งศัตรูตัวหน้าสุดก่อนเสมอ หากศัตรูแนวหน้าเป็นมอนสเตอร์ประเภทแทงค์ที่มีสถานะยั่วยุ (Taunt / Frontline Guard) จะต้องตีตัวแทงค์ให้แตกก่อนจึงจะไล่ตีตัวถัดไปจากหน้าไปหลัง
+* 2. ความพิเศษตามสกิลเฉพาะตัว (Skill-Specific Targeting): ความสามารถในการตีหมู่ (AoE), ตีชิ่ง (Cleave) หรือพุ่งล้วงตัวหลังสุด (Backline Bypass) จะผูกอยู่กับสกิลของตัวละครแต่ละตัวตามที่ระบุใน Character Skill Sheet
+* 3. การคลิกเลือกเป้าโฟกัสเอง (Manual Tap-to-Focus): ผู้เล่นสามารถกดคลิกที่ชิ้นส่วนบอสหรือลูกสมุนบนหน้าจอเพื่อขึ้นสัญลักษณ์เป้าเล็ง สั่งให้ทีมหันไปรุมโจมตีเป้าหมายนั้นก่อนได้ทันที (หากไม่ติดสถานะ Taunt ของมอนสเตอร์แทงค์)
+2.3 ระบบเกจเกราะบอส Boss Stagger Check 5 ช่อง (ทีม 5 คน) & โหมดบอสคลั่ง (Berserk Phase)
+* สูตรคำนวณค่าเจาะเกราะ: Break Damage (BP) = Base Skill Break * (Break Power% / 100) * Shock Multiplier
+* ผลลัพธ์เมื่อทุบเกราะครบ 5 ช่องทันเวลา (STAGGERED): ยกเลิกท่าใหญ่บอสทันที + หลอดเลือดบอสเปลี่ยนจากสีแดงสดเป็นสีส้มทองเรืองแสงกะพริบนาน 5.5 วินาที รับดาเมจแรงขึ้น +50% (มี Anti-Stagger Lock 8 วินาทีหลังหายมึน)
+* ระบบเวลาจำกัดและโหมดบอสคลั่ง (Berserk Phase — Mental Corruption): เมื่อเวลาต่อสู้ในเวฟบอสผ่านไปครบ 60 วินาที บอสเทพบรรพกาลจะปลดปล่อยออร่ากัดกร่อนจิตใจ เข้าสู่โหมด BERSERK PHASE ถาวรจนจบด่าน: บอสได้ ATK +100%, SPD +50% และเกจ Stagger Check 5 ช่องหนาขึ้น +50%
+ช่วงชั้นหอคอย (Floor Tier)
+	ความหนาต่อ 1 ช่อง (ทีม 5 คน)
+	ความหนารวม 5 ช่องปกติ
+	ความหนารวมตอนติด Berserk (+50%)
+	ค่า Break Power แนะนำของทีม
+	ชั้นที่ 1 – 20 (Early Spire)
+	120 BP / ช่อง
+	600 BP
+	900 BP
+	100% – 130%
+	ชั้นที่ 21 – 50 (Mid Spire)
+	180 BP / ช่อง
+	900 BP
+	1,350 BP
+	150% – 190%
+	ชั้นที่ 51 – 80 (High Spire)
+	260 BP / ช่อง
+	1,300 BP
+	1,950 BP
+	200% – 250%
+	ชั้นที่ 81 – 100+ (Abyss Spire)
+	360 BP / ช่อง
+	1,800 BP
+	2,700 BP
+	280%+
+	2.4 ลำดับการทำงานของสกิล 4+1, 2-Slot Gambit & ระบบควบคุม Cut-In
+* 1. Ultimate Skill (เมื่อเกจเต็ม 100%):
+   * กฎ Instant Cut-In Override: เมื่อเปิดแสดงผล Cut-In หากตัวละครถัดไปปล่อยท่าไม้ตายซ้อนเข้ามา ระบบจะเคลียร์กรอบ 3D Cut-In อันเก่าออกทันทีแล้วสไลด์อันใหม่ขึ้นมาทับเลย (ส่วนเอฟเฟกต์สกิลและดาเมจในสนามรบยังทำงานครบ 100%)
+   * ปุ่มสวิตช์ CUT-IN ON / OFF: ผู้เล่นสามารถกดปิดรูป Cut-In บนมุมจอเพื่อให้ตัวละครในสนามรบออกท่าปล่อยสกิลอย่างเดียวโดยไม่มีกรอบรูปเด้งบังจอ
+* 2. Gambit Slot 1 (Emergency / Break / Heal): เช็คเงื่อนไขฉุกเฉินก่อนเสมอ เช่น เมื่อบอสเปิดเกจ Stagger Check หรือเมื่อเพื่อนร่วมทีมมี HP ต่ำกว่า 50%
+* 3. Gambit Slot 2 (Elemental Chain Combo): เช็คเงื่อนไขสถานะธาตุบนตัวบอสเพื่อพุ่งออกไปจุดชนวนปฏิกิริยาธาตุ
+* 4. Core Active Skill & Basic Attack: ทำงานอัตโนมัติตามคูลดาวน์และค่า SPD
+MODULE 3: 6 ELEMENTS, STATUS DURATION, PROC CHANCE BUDGET & REACTIONS
+3.1 ตารางธาตุทั้ง 6, ระยะเวลาสถานะ (Duration) และกฎล้างสถานะเมื่อเกิดปฏิกิริยา
+* กฎล้างสถานะเมื่อเกิดปฏิกิริยา (Consume Status on Reaction): ทันทีที่เพื่อนร่วมทีมใช้สกิล Gambit จุดชนวนปฏิกิริยาธาตุสำเร็จ สถานะตั้งต้นบนตัวบอสจะถูกระเบิดและหายไปทันที ไม่ค้างอยู่ให้ตัวละครอื่นตีซ้ำฟรี
+ธาตุ (Element)
+	สถานะประจำธาตุ (Debuff)
+	ระยะเวลาคงอยู่ (Duration)
+	ผลของสถานะผิดปกติ
+	1. Fire (ไฟ)
+	Burn (เผาไหม้)
+	4.0 วินาที
+	ทำดาเมจไฟต่อเนื่อง 30% ATK ทุกวินาที และลด DEF ของเป้าหมายลง 15%
+	2. Cryo (น้ำแข็ง)
+	Freeze (แช่แข็ง)
+	2.0 วินาที
+	หยุดการเคลื่อนไหวและชะลอการชาร์จท่าของบอส (บอสมีต้านทานแช่แข็งซ้ำ 8.0 วินาทีหลังหลุด)
+	3. Electro (สายฟ้า)
+	Shock (ช็อตไฟฟ้า)
+	4.0 วินาที
+	ทำให้เกราะ Boss Stagger Check เปราะลง รับค่า Break Damage แรงขึ้น +35%
+	4. Wind (ลม)
+	Bleed (คมลมเฉือน)
+	4.0 วินาที
+	สร้างบาดแผลสายลมซ้อนทับสูงสุด 5 ชั้น (ชั้นละ 20% ATK ต่อวินาที)
+	5. Light (แสง)
+	Luminous Mark (ตราแสง)
+	4.0 วินาที
+	เพื่อนร่วมทีมที่โจมตีเป้าหมายติดตรานี้ได้รับ Crit Rate +20% และดูดเลือด 8% ของดาเมจ
+	6. Dark (มืด)
+	Corrosion (กัดกร่อน)
+	4.0 วินาที
+	เป้าหมายได้รับความเสียหายจากท่าไม้ตาย ULTIMATE แรงขึ้น +35%
+	3.2 เพดานโอกาสติดสถานะ (Status Proc Chance Budget: Skill 55% + Gear 45%)
+สูตรคำนวณโอกาสติดสถานะคือ: Total Proc Chance (%) = Base Skill Proc Chance (%) + Gear Effect Hit Rate (%) - Boss Effect RES (%)
+ประเภทท่าโจมตี
+	โอกาสติดที่สกิล Lv.1
+	โอกาสติดที่สกิล Lv.4 (3 ดาว)
+	โอกาสติดที่สกิล Lv.7 (4 ดาว)
+	โอกาสติดที่สกิล Lv.10 (5 ดาว MAX)
+	เพดานที่ต้องหาเพิ่มจาก Gear (Effect Hit Rate)
+	Basic Attack (ตีปกติ)
+	10%
+	10%
+	10%
+	10%
+	บวกเพิ่มตามค่า Effect Hit Rate ของผู้ใส่
+	Active Skill (สถานะทั่วไป)
+	35%
+	41%
+	47%
+	55%
+	ต้องหา Effect Hit Rate จาก Gear อีก +45% เพื่อติดชัวร์ 100%
+	Active Skill (สถานะ Freeze)
+	25%
+	30%
+	35%
+	40%
+	ต้องหา Effect Hit Rate อีก +60% (หรือตีใส่เป้าหมายติด Shock จะได้โบนัสโอกาสติด +30%)
+	Ultimate Skill (ท่าไม้ตาย)
+	65%
+	70%
+	75%
+	80%
+	ต้องหา Effect Hit Rate อีก +20% เพื่อการันตีติด 100%
+	3.3 ปฏิกิริยาธาตุทั้ง 4 คู่ (Rebalanced Elemental Reactions) & บัฟจัดทีม 5 คน
+ปฏิกิริยาธาตุ (Reaction)
+	เงื่อนไขการเกิด (Trigger)
+	เอฟเฟกต์ฉบับปรับสมดุล (ล้างสถานะตั้งต้นทันทีที่เกิดปฏิกิริยา)
+	1. MELTDOWN
+	Freeze (Cryo) ตามด้วย Fire
+	ระเบิดดาเมจ 1.8x (คิดโอกาสคริตามสเตตัสจริง) และแปะสถานะ Defenseless (ลด DEF บอสลงอีก 25% นาน 4 วินาที)
+	2. SUPERCONDUCT
+	Shock (Electro) ตามด้วย Cryo
+	ทำดาเมจเกราะพิเศษ +80 BP ทันที และแปะสถานะ Conductive (เพิ่ม Break Power ให้ทั้งทีม +35% นาน 4 วินาที)
+	3. TWILIGHT EXECUTION
+	Luminous Mark (Light) ตามด้วย Dark
+	สร้างความเสียหายทะลุเกราะ Ignore DEF 40% ในช่วงปกติ และกลายเป็น 100% True Damage เมื่อเลือดบอสต่ำกว่า 25%
+	4. FIRESTORM
+	Burn (Fire) ตามด้วย Wind
+	พายุคมลมโหมไฟ 3 ฮิต กระจายสถานะ Burn + Bleed และฟื้นฟูเกจ ULTIMATE +10 หน่วย (คูลดาวน์การปั่นเกจ 6 วินาที)
+	* บัฟจัดทีมธาตุสำหรับปาร์ตี้ 5 คน (5-Hero Resonance Synergy):
+   * ธาตุเดียวกัน 2 ตัว (2-Same): Fire x2 (ATK +15%), Cryo x2 (DEF +20%), Electro x2 (Break Power +20%), Wind x2 (SPD +12%)
+   * ธาตุหลัก 3 + ธาตุรอง 2 (3+2 Full House): เพิ่มโบนัสของธาตุหลักเป็น 1.5 เท่า และเพิ่ม Max HP ทั้งทีม +15%
+   * 5 ธาตุไม่ซ้ำกัน (5-Element Astral Convergence): เพิ่ม Break Power +25%, Effect Hit Rate +15% และ Chain Combo DMG +35% ให้ทั้งทีม
+MODULE 4: PROGRESSION, 8+3 STATS, EQUIPMENT ENHANCEMENT (+15 FAIL STACK) & 8 SETS
+4.1 ตารางค่าสเตตัสหลัก 8 ค่า + สเตตัสเสริม 3 ค่า (8 Core + 3 Secondary Stats)
+* 1. HP: พลังชีวิตสูงสุด
+* 2. ATK: พลังโจมตีพื้นฐาน
+* 3. DEF: พลังป้องกัน ลดดาเมจตามสูตร Damage = RawDmg * (100 / (100 + DEF))
+* 4. SPD: ความถี่ในการโจมตีปกติ (Interval = 115 / SPD วินาที)
+* 5. CRIT RATE (%): โอกาสติดคริติคอล (ค่าพื้นฐานเริ่มต้นทุกตัวละคร = 10%, เพดาน 100%)
+* 6. CRIT DMG (%): ความแรงคริติคอล (ค่าพื้นฐานเริ่มต้นทุกตัวละคร = 150%)
+* 7. BREAK POWER (%): ประสิทธิภาพการทุบเกจ Boss Stagger (ค่าเริ่มต้น = 100%)
+* 8. ENERGY CHARGE (%): อัตราเร่งการเติมเกจไม้ตาย ULTIMATE (ค่าเริ่มต้น = 100%)
+* 9. EFFECT HIT RATE (%): โบนัสเพิ่มโอกาสแปะสถานะผิดปกติ (ค่าเริ่มต้น = 0%)
+* 10. EFFECT RES (%): โอกาสต้านทานสถานะผิดปกติจากศัตรู (ค่าเริ่มต้น = 0%)
+* 11. HEALING BONUS (%): โบนัสเพิ่มปริมาณการฮีลและโล่ที่สร้าง (ค่าเริ่มต้น = 0%)
+4.2 อุปกรณ์สวมใส่ 4 ช่อง และระบบตีบวกแยกชิ้น (+0 ถึง +15) แบบมี Fail Stack สะสม
+ผู้เล่นสามารถตีบวกอุปกรณ์แต่ละชิ้นแยกกันได้ตั้งแต่ +0 ถึง +15 โดยทุกๆ ขั้น +3, +6, +9, +12, +15 จะสุ่มเปิดหรืออัปเกรดค่าพลังรอง (Substat):
+* ช่องที่ 1 — Weapon: ค่าหลักตายตัว ATK (Flat + %)
+* ช่องที่ 2 — Armor: ค่าหลักตายตัว HP & DEF (Flat + %)
+* ช่องที่ 3 — Ring: ค่าหลักสุ่ม 1 อย่าง (Crit Rate%, Crit DMG%, ATK%, HP%, Healing Bonus%)
+* ช่องที่ 4 — Core Sigil: ค่าหลักสุ่ม 1 อย่าง (Break Power%, Energy Charge%, Effect Hit Rate%, SPD)
+* กฎการตีบวกแบบมี Fail Stack (Artisan's Pity):
+   * 1. อุปกรณ์ไม่มีวันแตกและไม่ลดระดับขั้น เมื่อตีบวกพลาด
+   * 2. สะสมโอกาสติดเพิ่มเรื่อยๆ จนกว่าจะติด: ทุกครั้งที่ตีบวกพลาด อุปกรณ์ชิ้นนั้นจะได้รับ โบนัสโอกาสติดสะสม (Fail Stack +% ต่อครั้ง) เพิ่มขึ้นเรื่อยๆ และคงอยู่ถาวรบนอุปกรณ์ชิ้นนั้นจนกว่าจะตีติดขั้นนั้นสำเร็จ
+   * 3. สูตรคำนวณโอกาสติดจริง: Current Success Rate = min(100%, Base Rate + (Fail Count * Fail Stack Bonus per Fail))
+   * 4. รีเซ็ตเมื่อตีติด: เมื่อตีบวกขึ้นขั้นใหม่สำเร็จ โบนัส Fail Stack ของชิ้นนั้นจะรีเซ็ตกลับเป็น 0% เพื่อเริ่มนับใหม่ในขั้นถัดไป
+ขั้นตีบวก (Enhance Level)
+	โอกาสติดพื้นฐาน (Base Rate)
+	โบนัส Fail Stack ต่อการพลาด 1 ครั้ง
+	จำนวนครั้งสูงสุดที่การันตีติด 100%
+	โบนัสเพิ่มค่าพลังหลักสะสม (Main Stat Multiplier)
+	โบนัสพิเศษทุก 3 ขั้น (Substat Milestone)
+	+1 ถึง +3
+	100%
+	ติดชัวร์ 100%
+	1 ครั้ง
+	+10% ถึง +30%
+	ที่ +3: ปลดล็อก Substat แถวที่ 1
+	+4 ถึง +6
+	75%
+	+12.5% ต่อครั้ง
+	ไม่เกิน 3 ครั้ง (75% ➔ 87.5% ➔ 100%)
+	+45% ถึง +75%
+	ที่ +6: ปลดล็อก Substat แถวที่ 2
+	+7 ถึง +9
+	50%
+	+12.5% ต่อครั้ง
+	ไม่เกิน 5 ครั้ง (50% ➔ 62.5% ➔ 75% ➔ 87.5% ➔ 100%)
+	+95% ถึง +135%
+	ที่ +9: ปลดล็อก Substat แถวที่ 3
+	+10 ถึง +12
+	30%
+	+10.0% ต่อครั้ง
+	ไม่เกิน 8 ครั้ง (สะสมทีละ +10% จนครบ 100%)
+	+160% ถึง +210%
+	ที่ +12: ปลดล็อก Substat แถวที่ 4
+	+13 ถึง +15 (MAX)
+	15%
+	+8.5% ต่อครั้ง
+	ไม่เกิน 11 ครั้ง (สะสมทีละ +8.5% จนครบ 100%)
+	+245% ถึง +300% (4x ของค่าตั้งต้น)
+	ที่ +15: อัปเกรด Substat สุ่ม 1 แถวขึ้นขั้นสูงสุด (Masterwork)
+	4.3 ตารางเซ็ตอุปกรณ์ทั้งหมด 8 เซ็ต (8 Canonical Equipment Sets)
+ชื่อเซ็ตอุปกรณ์ (Set Name)
+	สายที่เหมาะสวมใส่
+	โบนัสเมื่อใส่ครบ 2 ชิ้น (2-PC Bonus)
+	โบนัสเมื่อใส่ครบ 4 ชิ้น (4-PC Bonus)
+	1. Starfall Executioner
+	Melee / Ranged Crit DPS
+	เพิ่มโอกาสคริติคอล Crit Rate +15%
+	เพิ่ม Crit DMG +35% และเมื่อโจมตีติดคริติคอลจะทะลุ DEF ศัตรู 15%
+	2. Astral Nexus
+	สายคอมโบ Gambit Chain
+	เพิ่มดาเมจสกิล Tactical Chain +25%
+	เมื่อใช้สกิล Tactical Chain จะมอบบัฟ ATK +15% ให้เพื่อนทั้งทีมนาน 4 วินาที
+	3. Eclipse
+	สายทำลายเกราะ & เบิร์ส
+	เพิ่มพลังเจาะเกราะ Break Power +25%
+	ขณะบอสติดสถานะ Staggered ท่าไม้ตาย Ultimate ทำคริดาเมจแรงขึ้น +60%
+	4. Overload
+	สายปั่นเกจ & ท่าไม้ตาย
+	เพิ่มอัตราฟื้นฟูพลังงาน Energy Charge +10%
+	ท่าไม้ตาย Ultimate ทำความเสียหายแรงขึ้น +40%
+	5. Titan
+	สายแทงค์แนวหน้า
+	เพิ่มพลังชีวิตสูงสุด Max HP +15%
+	เมื่อ HP ต่ำกว่า 50% ได้รับโล่ 20% ของ Max HP นาน 5 วินาที (คูลดาวน์ 15 วินาที)
+	6. Volatus
+	สายความเร็ว & ตีปกติ
+	เพิ่มความเร็ว SPD +20%
+	เพิ่มความเสียหายของการโจมตีปกติ (Basic Attack DMG) แรงขึ้น +40%
+	7. Radiant Dawn
+	สายฮีล & กางโล่
+	เพิ่มประสิทธิภาพการรักษา Healing Bonus +15%
+	เปลี่ยนการฮีลส่วนที่ล้นหลอดเลือด (Overheal) เป็นโล่ป้องกันนาน 6 วินาที (สูงสุด 30% Max HP)
+	8. Voidweaver
+	สายแปะสถานะ & ดีบัฟ
+	เพิ่มโอกาสติดสถานะ Effect Hit Rate +20%
+	เมื่อแปะสถานะผิดปกติสำเร็จ มอบตรา Void 1 ขั้น (นาน 5s สูงสุด 5 ขั้น) ศัตรูรับดาเมจแรงขึ้นขั้นละ +5% (สูงสุด +25%)
+	MODULE 5: ROGUELITE FLOOR BLESSINGS (12 CARDS) & CHRONO REWIND
+รหัสไพ่
+	ชื่อไพ่ทาโรต์ (Blessing Card)
+	ความหายาก
+	เอฟเฟกต์ขั้นที่ 1 / 2 / 3 (Tier I / Tier II / Tier III)
+	B01
+	The Sun's Wrath
+	Common
+	เพิ่ม ATK ทั้งทีม +15% / +30% / +50%
+	B02
+	The Tower's Sunder
+	Common
+	เพิ่ม Break Power ทั้งทีม +20% / +40% / +65%
+	B03
+	The Chariot's Gale
+	Common
+	เพิ่ม SPD ทั้งทีม +12% / +24% / +40%
+	B04
+	The Empress's Grace
+	Common
+	เพิ่ม Max HP +15% และฟื้นฟูเลือด 15% / 30% / 50% ทุกครั้งที่ผ่านชั้น
+	B05
+	The Magician's Spark
+	Rare
+	เพิ่มโอกาสติดสถานะ (Effect Hit Rate) ทั้งทีม +15% / +30% / +45%
+	B06
+	Wheel of Fortune
+	Rare
+	เพิ่ม Crit Rate +12% / +24% / +36% และ Crit DMG +25% / +50% / +80%
+	B07
+	The Star's Conduit
+	Rare
+	เริ่มต้นเวฟใหม่ได้รับเกจ Ultimate ทันที 25% / 50% / 75%
+	B08
+	The Hermit's Bastion
+	Rare
+	แถวหน้าได้รับโล่ 20% / 35% / 50% ของ Max HP ตอนเริ่มเวฟ และสะท้อนดาเมจ 15%
+	B09
+	Judgement of Ruin
+	Epic
+	เมื่อบอสติด Staggered ทีมจะสร้างดาเมจแรงขึ้นอีก +35% / +70% / +110%
+	B10
+	The Lovers' Resonance
+	Epic
+	ความแรงของปฏิกิริยาธาตุทั้ง 4 คู่เพิ่มขึ้น +40% / +80% / +130%
+	B11
+	Death's Execution
+	Epic
+	เมื่อ HP ศัตรูต่ำกว่า 25% การโจมตีทุกชนิดทำดาเมจเพียว (True DMG) เพิ่มอีก +20% / +40% / +65%
+	B12
+	The World's Chrono Loop
+	Epic
+	เมื่อใช้ท่าไม้ตาย Ultimate มีโอกาส 25% / 45% / 65% ที่จะคืนเกจพลังงานกลับทันที 50%
+	MODULE 6: OFFICIAL GAME WIKI — CHARACTER & BOSS BALANCE SHEETS (SPREADSHEET-READY)
+6.1 ตารางสเตตัสพื้นฐานตัวละครทั้ง 6 ตัวแยกตามทวีปและ Role (Base Stats Table)
+รหัส
+	ชื่อตัวละคร
+	Rarity
+	ธาตุ
+	ทวีป (Region)
+	บทบาท (Role)
+	ตำแหน่งแนะนำ
+	HP (Lv.1 / Lv.100)
+	ATK (Lv.1 / Lv.100)
+	DEF (Lv.1 / Lv.100)
+	SPD
+	Base Crit%
+	Base CritDMG%
+	Base Break%
+	โบนัสปลดดาวประจำสาย (ที่ 5 ดาว)
+	H01
+	Kallen Vermillion
+	SSR
+	Fire
+	2. Central Imperium
+	Melee DPS
+	แถวหน้า
+	1,250 / 18,125
+	165 / 2,392
+	75 / 1,087
+	108
+	10%
+	150%
+	100%
+	Crit Rate +12%, SPD +10
+	H02
+	Caelum Vance
+	SSR
+	Electro
+	3. Techno-Savant
+	Tank / Breaker
+	แถวหน้า
+	1,680 / 24,360
+	115 / 1,667
+	120 / 1,740
+	96
+	10%
+	150%
+	125%
+	DEF +25%, Effect RES +20%
+	H03
+	Yuzuki Hoshino
+	SSR
+	Cryo
+	4. Frostbound Tundra
+	Debuffer
+	แถวหลัง
+	1,050 / 15,225
+	145 / 2,102
+	65 / 942
+	104
+	10%
+	150%
+	110%
+	Effect Hit +20%, Break +20%
+	H04
+	Kahori Amakusa
+	SSR
+	Wind
+	1. Verdant Wilds
+	Melee DPS
+	แถวหน้า/หลัง
+	1,120 / 16,240
+	158 / 2,291
+	68 / 986
+	125
+	10%
+	150%
+	100%
+	Crit Rate +12%, SPD +10
+	H05
+	Aurelia Solis
+	SSR
+	Light
+	5. Aetherial Sanctuary
+	Support & Healer
+	แถวหลัง
+	1,380 / 20,010
+	130 / 1,885
+	88 / 1,276
+	102
+	10%
+	150%
+	105%
+	Heal Bonus +15%, Energy +15%
+	H06
+	Noctis Ravenlock
+	SR
+	Dark
+	6. Abyssal Shadowlands
+	Ranged DPS
+	แถวหลัง
+	980 / 14,210
+	152 / 2,204
+	58 / 841
+	115
+	10%
+	150%
+	100%
+	Crit Rate +15%, Crit DMG +25%
+	6.2 ตารางข้อมูลสกิลตัวละครครบทุกท่า (Complete Character Skill Sheet สำหรับดึงเข้า Spreadsheet)
+ตัวละคร & ทวีป
+	ประเภทสกิล
+	ชื่อสกิล
+	เป้าหมาย (Target)
+	คูลดาวน์
+	ตัวคูณดาเมจ/ฮีล (Lv.1 ถึง Lv.10)
+	ค่า Break
+	สถานะ & โอกาสติด (Lv.1 ถึง Lv.10)
+	เอฟเฟกต์พิเศษ
+	1. Kallen (Fire / Central Imperium)
+	Basic Attack
+	Imperial Ember Slash
+	ตัวหน้าสุด 1 เป้า
+	ตาม SPD (1.06s)
+	100% ถึง 130% ATK
+	15 BP
+	Burn (10% คงที่)
+	เติมเกจ Ultimate +4%
+	1. Kallen
+	Active Skill
+	Blazing Lotus Cleave
+	แถวหน้า 2 เป้า
+	7.0s
+	210% ถึง 300% ATK
+	40 BP
+	Burn 4.0s (35% ถึง 55%)
+	ลด DEF เป้าหมายลง 15% นาน 4.0s
+	1. Kallen
+	Tactical Chain
+	Meltdown Execution
+	เป้าหมายตรงเงื่อนไข Gambit
+	9.0s
+	320% ถึง 460% ATK
+	60 BP
+	จุดชนวน MELTDOWN (100%)
+	ฟันเป้าหมายติด Freeze เกิด MELTDOWN (1.8x + ลด DEF อีก 25%)
+	1. Kallen
+	Ultimate
+	Scarlet Imperial Horizon
+	ศัตรูทั้งหมด (AoE)
+	เกจ 100%
+	580% ถึง 850% ATK
+	150 BP
+	Burn 4.0s (65% ถึง 80%)
+	รับบัฟ Crit DMG +30% ก่อนฟัน และแรงขึ้น +25% ต่อเป้าติด Burn
+	1. Kallen
+	Passive (3/4/5 ดาว)
+	Heart of the Imperium
+	ตัวเอง
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: ATK +12% / 4 ดาว: ตีเป้าติด Burn ได้ Crit Rate +20% / 5 ดาว: บอสติด Staggered รีเซ็ต Active Skill
+	2. Caelum (Electro / Techno-Savant)
+	Basic Attack
+	Volt Lance Thrust
+	ตัวหน้าสุด 1 เป้า
+	ตาม SPD (1.20s)
+	95% ถึง 125% ATK
+	20 BP
+	Shock (10% คงที่)
+	สร้างเกราะไฟฟ้าซับดาเมจให้ตัวเอง 5% Max HP
+	2. Caelum
+	Active Skill
+	Magitek Thunder Guard
+	แถวหน้าศัตรู + บัฟทีม
+	7.0s
+	180% ถึง 260% ATK
+	50 BP
+	Shock 4.0s (35% ถึง 55%)
+	ยั่วยุ (Taunt) ศัตรูแถวหน้า และมอบบัฟ DEF +25% ให้แถวหน้าทีมเรานาน 4.0s
+	2. Caelum
+	Tactical Chain
+	Overdrive Armor Shatter
+	บอสที่เปิดเกจ Stagger
+	8.0s
+	280% ถึง 400% ATK
+	120 BP (1 ช่องเต็ม)
+	Shock 4.0s (50% ถึง 70%)
+	ท่าเจาะเกราะสูงสุดในเกม และมอบโล่ 15% Max HP ให้เพื่อนที่เลือดน้อยสุด
+	2. Caelum
+	Ultimate
+	Heavenfall Railgun Dive
+	ศัตรูทั้งหมด (AoE)
+	เกจ 100%
+	480% ถึง 700% ATK
+	180 BP (1.5 ช่อง)
+	Shock 4.0s (65% ถึง 80%)
+	ทำลายบาเรียของชิ้นส่วนบอสทันที และเพิ่ม Break Power ทั้งทีม +25% นาน 5.0s
+	2. Caelum
+	Passive (3/4/5 ดาว)
+	Aegis Core Reactor
+	ตัวเองและแถวหน้า
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: Break Power +20% / 4 ดาว: ลดดาเมจที่ตัวเองได้รับ 18% / 5 ดาว: ทุบเกราะแตก 1 ช่อง ฮีลทีม 10% HP
+	3. Yuzuki (Cryo / Frostbound Tundra)
+	Basic Attack
+	Rime Star Shard
+	ตัวหน้าสุด 1 เป้า
+	ตาม SPD (1.10s)
+	100% ถึง 130% ATK
+	15 BP
+	Slow -15% (20% คงที่)
+	ชะลอความเร็วโจมตีของเป้าหมายลง 15% นาน 2.0s
+	3. Yuzuki
+	Active Skill
+	Permafrost Nova
+	ศัตรูทั้งหมด (AoE)
+	7.0s
+	190% ถึง 275% ATK
+	40 BP
+	Freeze 2.0s (25% ถึง 40%)
+	หากเป้าหมายติด Shock อยู่ โอกาสติด Freeze จะเพิ่มอีก +30% ทันที
+	3. Yuzuki
+	Tactical Chain
+	Superconduct Zero
+	เป้าหมายตรงเงื่อนไข Gambit
+	9.0s
+	290% ถึง 420% ATK
+	80 BP
+	จุดชนวน SUPERCONDUCT (100%)
+	ยิงเป้าติด Shock เกิด SUPERCONDUCT (หักเกราะพิเศษ +80 BP & ทีมได้ Break Power +35%)
+	3. Yuzuki
+	Ultimate
+	Absolute Zero Nebula
+	ศัตรูทั้งหมด (AoE)
+	เกจ 100%
+	520% ถึง 760% ATK
+	150 BP
+	Freeze 2.0s (65% ถึง 80%)
+	ลด Effect RES ศัตรูทั้งหมดลง 25% นาน 5.0s ก่อนคำนวณโอกาสแช่แข็ง
+	3. Yuzuki
+	Passive (3/4/5 ดาว)
+	Oracle of the Tundra
+	ทั้งทีม / ศัตรู
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: Effect Hit +15% / 4 ดาว: ศัตรูติดสถานะตีเบาลง 15% / 5 ดาว: เกิดปฏิกิริยาธาตุ เติมเกจ Ult ตัวเอง +15%
+	4. Kahori (Wind / Verdant Wilds)
+	Basic Attack
+	Gale Fox Twin-Cut
+	ตัวหน้าสุด (ฟัน 2 ฮิต)
+	ตาม SPD (0.92s)
+	55%x2 ถึง 72%x2 ATK
+	15 BP
+	Bleed (10% ต่อฮิต)
+	ความเร็วสูงสุดในเกม สะสมชั้น Bleed ได้รวดเร็วมาก
+	4. Kahori
+	Active Skill
+	Verdant Shadow Step
+	ล้วงตัวหลังสุด (Bypass)
+	6.0s
+	235% ถึง 340% ATK
+	40 BP
+	Bleed 2 ชั้น 4.0s (35% ถึง 55%)
+	ข้ามมอนสเตอร์แทงค์แถวหน้าไปฟันเสาบาเรียหรือตัวซัพพอร์ตแถวหลังโดยตรง
+	4. Kahori
+	Tactical Chain
+	Firestorm Whirlwind
+	ศัตรูทั้งหมด (AoE 3 ฮิต)
+	8.5s
+	310% ถึง 450% ATK
+	60 BP
+	จุดชนวน FIRESTORM (100%)
+	ฟันเป้าติด Burn เกิด FIRESTORM (กระจาย Burn+Bleed & เติมเกจ Ult +10 ให้ทั้งทีม)
+	4. Kahori
+	Ultimate
+	Nine-Tailed Tempest Dance
+	เลือดน้อยสุดและชิ่งทั่วสนาม
+	เกจ 100%
+	620% ถึง 900% ATK
+	150 BP
+	Bleed 3 ชั้น 4.0s (65% ถึง 80%)
+	ระเบิดดาเมจของชั้น Bleed ทั้งหมดบนตัวเป้าหมายออกมาทันที 150%
+	4. Kahori
+	Passive (3/4/5 ดาว)
+	Spirit of the Wilds
+	ตัวเอง
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: SPD +15% / 4 ดาว: ตีปกติมีโอกาส 30% ฟันซ้ำอีก 1 ครั้ง / 5 ดาว: เป้าที่มี Bleed 5 ชั้น รับ Crit DMG +50%
+	5. Aurelia (Light / Aetherial Sanctuary)
+	Basic Attack
+	Radiant Feather Arrow
+	ตัวหน้าสุด 1 เป้า
+	ตาม SPD (1.12s)
+	95% ถึง 125% ATK
+	15 BP
+	Luminous Mark (10% คงที่)
+	ฮีลเพื่อนที่เลือดน้อยที่สุดเบาๆ 35% ของ ATK ตัวเอง
+	5. Aurelia
+	Active Skill
+	Sanctuary Sunburst
+	บอสหลัก + บัฟทีม
+	6.5s
+	175% ถึง 250% ATK
+	40 BP
+	Luminous Mark 4.0s (35% ถึง 55%)
+	ล้างดีบัฟให้เพื่อน 1 คน และมอบบัฟ Crit Rate +15% ให้ทั้งทีมนาน 4.0s
+	5. Aurelia
+	Tactical Chain
+	Valkyrie's Benediction
+	ฮีลทั้งทีม + ยิงบอส
+	8.0s
+	ฮีลหมู่ 180% ถึง 260% ATK
+	80 BP
+	Luminous Mark 4.0s (50% ถึง 70%)
+	ท่าฮีลกู้วิกฤตเมื่อเพื่อนมี HP ต่ำกว่า 50% และช่วยทุบเกจ Stagger บอส 80 BP
+	5. Aurelia
+	Ultimate
+	Aetherial Dawn Chorus
+	ฮีลทั้งทีม + โจมตีหมู่
+	เกจ 100%
+	ฮีลหมู่ 320% ถึง 460% ATK
+	150 BP
+	Luminous Mark 4.0s (65% ถึง 80%)
+	มอบโล่ศักดิ์สิทธิ์ 20% Max HP ให้ทั้งทีม และเร่งเกจ Ultimate ให้เพื่อนทุกคน +15%
+	5. Aurelia
+	Passive (3/4/5 ดาว)
+	Seraphic Halo
+	ทั้งทีม
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: Heal Bonus +15% / 4 ดาว: เพื่อนมีโล่ได้ ATK +15% / 5 ดาว: กันเพื่อนตาย 1 ครั้งต่อเวฟ (ฟื้นเลือด 30%)
+	6. Noctis (Dark / Abyssal Shadowlands)
+	Basic Attack
+	Shadow Chain Scythe
+	ตัวหน้าสุด 1 เป้า
+	ตาม SPD (1.00s)
+	100% ถึง 130% ATK
+	15 BP
+	Corrosion (10% คงที่)
+	ปาเคียวโซ่จากแนวหลัง ดูดเกจพลังงานเป้าหมายมาเติมให้ตัวเอง +5%
+	6. Noctis
+	Active Skill
+	Abyssal Reap
+	ศัตรูที่ HP% น้อยที่สุด
+	6.5s
+	220% ถึง 320% ATK
+	40 BP
+	Corrosion 4.0s (35% ถึง 55%)
+	เล็งเก็บตกชิ้นส่วนบอสหรือลูกสมุนที่ใกล้ตายโดยอัตโนมัติ
+	6. Noctis
+	Tactical Chain
+	Twilight Execution
+	เป้าหมายตรงเงื่อนไข Gambit
+	8.5s
+	340% ถึง 490% ATK
+	60 BP
+	จุดชนวน TWILIGHT (100%)
+	ตีเป้าติด Luminous Mark เกิด TWILIGHT EXECUTION (ทะลุ DEF 40% หรือ True DMG 100% เมื่อเลือดบอสต่ำกว่า 25%)
+	6. Noctis
+	Ultimate
+	Oblivion Guillotine
+	บอสหลัก 1 เป้า (Burst)
+	เกจ 100%
+	720% ถึง 1,050% ATK
+	150 BP
+	Corrosion 4.0s (65% ถึง 80%)
+	ท่าเดี่ยวแรงที่สุดในเกม หากใช้ใส่บอสที่เลือดต่ำกว่า 30% จะการันตีติดคริติคอล 100%
+	6. Noctis
+	Passive (3/4/5 ดาว)
+	Covenant of Shadows
+	ตัวเอง
+	ติดตัวถาวร
+	—
+	—
+	—
+	3 ดาว: Crit DMG +25% / 4 ดาว: ตีเป้าที่เลือดต่ำกว่า 50% แรงขึ้น +25% / 5 ดาว: สังหารเป้าหมายได้ เติมเกจ Ult +50%
+	6.3 ตารางสกิลบอสเทพบรรพกาลและชิ้นส่วนบอส (Old Gods Boss & Multi-Part Skill Sheet)
+ชื่อเป้าหมายฝั่งบอส
+	ประเภทเป้าหมาย
+	สัดส่วน HP / DEF
+	ท่าที่ 1: โจมตีปกติ (ทุก 2.5s)
+	ท่าที่ 2: สกิลพิเศษ (ทุก 8.0s)
+	ท่าที่ 3: ท่าล้างบาง (เมื่อทุบ Stagger 5 ช่องไม่ทันใน 4.0s)
+	โหมดคลั่ง Berserk Phase (เมื่อเวลาผ่านไป 60s)
+	1. Old God Core: Azathoth's Remnant
+	ตัวบอสหลัก (ยืนกลาง)
+	100% Boss HP / 100% DEF
+	Void Cleave: ตีแถวหน้าทั้งหมด 120% Boss ATK
+	Mental Corruption Wave: โจมตีทั้งทีม 185% Boss ATK และลด SPD/ATK ทีมเรา 15% นาน 4s
+	Cataclysmic Supernova: ระเบิดดาเมจทั้งทีม 550% Boss ATK (หากทุบเกราะทัน บอสจะมึน 5.5s และรับดาเมจ +50%)
+	Eldritch Madness: บอสได้ ATK +100%, SPD +50% และความหนาเกราะ Stagger +50% BP
+	2. Void Tentacle Pillar
+	มอนสเตอร์แทงค์แนวหน้า (Front Guard)
+	35% Boss HP / 120% DEF
+	Abyssal Slam: ตีตัวหน้าสุด 90% Boss ATK
+	Eldritch Taunt (ทุก 10s): ยั่วยุบังคับให้การโจมตีปกติของฮีโร่ต้องตีเสานี้ก่อนนาน 4.0s
+	สลายไปเมื่อ HP หมด
+	ได้รับ ATK +100% และฟื้นฟูเลือดตัวเอง 5% ต่อวินาที
+	3. Eye of Madness
+	ชิ้นส่วนซัพพอร์ตแนวหลัง (Backline Part)
+	25% Boss HP / 70% DEF
+	Mind Laser: ยิงฮีโร่ที่ ATK สูงสุด 110% Boss ATK
+	Aegis Barrier (ทุก 12s): กางโล่ซับดาเมจ 15% HP ให้ตัวบอสหลัก (ใช้สกิลล้วงหลังของ Kahori/Noctis หรือกด Tap-to-Focus เพื่อทำลายได้)
+	เมื่อทำลายตานี้สำเร็จ บอสหลักจะเสียเกจ Stagger ทันที 1 ช่อง
+	ยิงเลเซอร์ใส่ 2 เป้าหมายพร้อมกัน
+	MODULE 7: CLAUDE AI BUILD PROMPT & CODE ARCHITECTURE GUIDE
+เมื่อต้องการนำเอกสารนี้ไปสั่งให้ Claude AI สร้างหรืออัปเดตตัวเกม ให้คัดลอกโมดูลที่เกี่ยวข้องพร้อมคำสั่งโครงสร้างต่อไปนี้:
+* src/data/resonators.js: เก็บข้อมูลตัวละครทั้ง 6 ตัวแยกตาม 6 ทวีปและ 5 Roles, สเตตัส 8+3 ค่า (Base Crit 10% / 150%), และตัวเลขสกิลจากตาราง MODULE 6.1 & 6.2
+* src/data/equipment.js: เก็บข้อมูลอุปกรณ์ 4 ช่อง, ตารางตีบวก +0 ถึง +15 พร้อมตัวแปร failStackCount ต่อชิ้น และเอฟเฟกต์เซ็ตอุปกรณ์ทั้ง 8 เซ็ตจากตาราง MODULE 4.2 & 4.3
+* src/engine/combatEngine.js: เก็บลอจิกทีม 5 คน, ปุ่มสลับผังรบ 4 แบบ (1-4, 2-3, 3-2, 4-1) พร้อมโบนัส DEF/ATK 12% ถึง 30%, ระบบคลิกเลือกเป้าโฟกัส (Tap-to-Focus), สมการโอกาสติดสถานะ (35% ถึง 55% + Effect Hit Rate), การล้างสถานะเมื่อเกิด Reaction, ท่าโจมตีสวนของบอส Old Gods, โหมด Berserk Phase ที่ 60s และระบบ Cut-In Override + Toggle ON/OFF
+* src/ui/views.js: เก็บหน้าต่าง UI ทั้ง 5 แท็บในธีม Frosted Dark Glass รองรับการ์ดตัวละคร 5 ใบด้านล่างหน้าจอและหน้าต่างตีบวกอุปกรณ์พร้อมหลอดแสดง Fail Stack
