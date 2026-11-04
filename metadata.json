@@ -1,6 +1,0 @@
-{
-  "name": "Chrono Spire: Starfall Protocol",
-  "description": "HD-2D Pixel Tactical Idle RPG, Roguelite Tower Climber & Anime Gacha Collection with 5-hero squad combat, 6 elemental reactions, and persistent constellation progression.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
