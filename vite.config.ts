@@ -1,10 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/Chrono-Spire-Starfall-Protocol/', // 👈 เพิ่มบรรทัดนี้เพื่อให้ทำงานบน GitHub Pages ได้ถูกต้อง
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
