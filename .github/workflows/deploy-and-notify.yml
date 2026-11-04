@@ -1,0 +1,50 @@
+name: Deploy Web Game & Notify Discord
+
+on:
+  push:
+    branches:
+      - main  # หรือ master ตามชื่อ branch หลักของคุณ
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Deploy ตัวเกมขึ้น GitHub Pages อัตโนมัติ
+      - name: 🚀 Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: . # หรือโฟลเดอร์ที่เก็บไฟล์ index.html (เช่น dist หรือ build)
+          branch: gh-pages
+
+      # 2. บอทส่งข้อความและการ์ดกดเล่นเกมเข้า Discord ทันที
+      - name: 📢 Send Build Notification to Discord
+        run: |
+          GAME_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_AUTHOR="${{ github.actor }}"
+          
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d '{
+                 "username": "Chrono Spire Deployer",
+                 "avatar_url": "https://cdn-icons-png.flaticon.com/512/686/686589.png",
+                 "embeds": [{
+                   "title": "🚀 New Game Build Available!",
+                   "description": "**ตัวเกมเวอร์ชันล่าสุดถูกอัปเดตเรียบร้อยแล้ว!**\nสามารถคลิกปุ่มลิงก์ด้านล่างเพื่อเปิดทดลองเล่นได้ทันที",
+                   "color": 16753920,
+                   "fields": [
+                     { "name": "📝 Commit Note", "value": "'"$COMMIT_MSG"'", "inline": false },
+                     { "name": "👤 Updated By", "value": "'"$COMMIT_AUTHOR"'", "inline": true },
+                     { "name": "🕹️ Play Game Link", "value": "[👉 คลิกที่นี่เพื่อเปิดเล่นเกมบนเบราว์เซอร์]('"$GAME_URL"')", "inline": false }
+                   ],
+                   "footer": { "text": "Chrono Spire CI/CD • Auto Build System" },
+                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+                 }]
+               }' \
+               ${{ secrets.DISCORD_BUILD_WEBHOOK }}
