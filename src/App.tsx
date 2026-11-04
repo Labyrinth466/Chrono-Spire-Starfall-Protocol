@@ -12,8 +12,9 @@ import {
   RESONATORS,
   ResonatorData,
   SkillSpec,
-} from './data/resonators';
+} from './data/resonators.ts';
 import {
+  ALL_GEAR_SLOTS,
   BLESSING_CARDS,
   BlessingCardSpec,
   calculateCurrentSuccessRate,
@@ -27,11 +28,11 @@ import {
   rollMilestoneSubstat,
   SetId,
   StatKey,
-} from './data/equipment';
+} from './data/equipment.ts';
 import {
   BossPartUnit,
   CombatHeroUnit,
-   computeHeroStats,
+  computeHeroStats,
   computePartyResonance,
   CutInBannerState,
   FloatingText,
@@ -39,21 +40,28 @@ import {
   HeroProgress,
   runBalanceSelfChecks,
   sfx,
-} from './engine/combatEngine';
-import { Particle, renderBattlefieldCanvas } from './engine/pixelRenderer';
-import { PixelPreviewCanvas, ResonatorSplashArt, WikiModal } from './components/ResonatorArtAndWiki';
+} from './engine/combatEngine.ts';
+import { Particle, renderBattlefieldCanvas } from './engine/pixelRenderer.ts';
+import { PixelPreviewCanvas, ResonatorSplashArt, WikiModal } from './components/ResonatorArtAndWiki.tsx';
+import { V21SystemsWorkbench } from './components/V21ArchitecturePanel.tsx';
 
 type GameShellState = 'TITLE_MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 type MainTab = 'BATTLE' | 'HEROES' | 'FORGE' | 'SUMMON' | 'REWIND';
 
-const INITIAL_HERO_PROGRESS: Record<string, HeroProgress> = {
-  H01: { id: 'H01', unlocked: true, level: 25, stars: 3, skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 }, gambit1: 'BOSS_STAGGER_OPEN', gambit2: 'TARGET_HAS_FREEZE' },
-  H02: { id: 'H02', unlocked: true, level: 25, stars: 3, skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 }, gambit1: 'BOSS_STAGGER_OPEN', gambit2: 'ANY_DEBUFF' },
-  H03: { id: 'H03', unlocked: true, level: 25, stars: 3, skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 }, gambit1: 'BOSS_STAGGER_OPEN', gambit2: 'TARGET_HAS_SHOCK' },
-  H04: { id: 'H04', unlocked: true, level: 25, stars: 3, skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 }, gambit1: 'BOSS_SHIELD_ACTIVE', gambit2: 'TARGET_HAS_BURN' },
-  H05: { id: 'H05', unlocked: true, level: 25, stars: 3, skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 }, gambit1: 'ALLY_HP_BELOW_50', gambit2: 'ANY_DEBUFF' },
-  H06: { id: 'H06', unlocked: true, level: 20, stars: 2, skillLevels: { basic: 2, active: 3, chain: 3, ultimate: 2 }, gambit1: 'BOSS_SHIELD_ACTIVE', gambit2: 'TARGET_HAS_LUMINOUS' },
-};
+const INITIAL_HERO_PROGRESS: Record<string, HeroProgress> = Object.fromEntries(
+  RESONATORS.map((r) => [
+    r.id,
+    {
+      id: r.id,
+      unlocked: true,
+      level: r.rarity === 'SSR' ? 25 : 20,
+      stars: r.rarity === 'SSR' ? 3 : 2,
+      skillLevels: r.rarity === 'SSR' ? { basic: 3, active: 4, chain: 4, ultimate: 3 } : { basic: 2, active: 3, chain: 3, ultimate: 2 },
+      gambit1: r.defaultGambit1,
+      gambit2: r.defaultGambit2,
+    },
+  ])
+);
 
 export default function App() {
   // Run SSOT math verification once
@@ -65,6 +73,7 @@ export default function App() {
   const [shellState, setShellState] = useState<GameShellState>('TITLE_MENU');
   const [activeTab, setActiveTab] = useState<MainTab>('BATTLE');
   const [showWiki, setShowWiki] = useState(false);
+  const [showV21Workbench, setShowV21Workbench] = useState(false);
   const [muted, setMuted] = useState(false);
 
   // Currencies & Progression
@@ -74,13 +83,13 @@ export default function App() {
   const [floor, setFloor] = useState(1);
   const [highestFloor, setHighestFloor] = useState(1);
 
-  // Squad & Formation
-  const [partyIds, setPartyIds] = useState<string[]>(['H02', 'H01', 'H04', 'H03', 'H05']);
+  // Squad & Formation (Default 5-Hero Squad: Caelum H04, Kallen H01, Kahori H10, Yuzuki H07, Aurelia H13)
+  const [partyIds, setPartyIds] = useState<string[]>(['H04', 'H01', 'H10', 'H07', 'H13']);
   const [formationId, setFormationId] = useState<'HYPER_CARRY' | 'SOLO_BASTION' | 'BALANCED' | 'VANGUARD'>('BALANCED');
   const [formationLevel, setFormationLevel] = useState(3);
   const [heroProgress, setHeroProgress] = useState<Record<string, HeroProgress>>(INITIAL_HERO_PROGRESS);
   const [gearInventory, setGearInventory] = useState<GearItem[]>(() => createInitialGearInventory());
-  const [blessings, setBlessings] = useState<Record<string, number>>({ B01: 1, B02: 1 });
+  const [blessings, setBlessings] = useState<Record<string, number>>({ ARCANA_19: 1, ARCANA_08: 1 });
   const [constellations, setConstellations] = useState<Record<string, number>>({ C_ATK: 1, C_BREAK: 1 });
 
   // UI Selection States
@@ -187,12 +196,12 @@ export default function App() {
   const initFloorWave = useCallback(
     (targetFloor: number, preserveHpRatio = false) => {
       const form = FORMATIONS.find((f) => f.id === formationId) || FORMATIONS[2];
-      const startEnergyTier = blessings['B07'] || 0;
-      const startEnergy = startEnergyTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'B07')!.tiers[Math.min(2, startEnergyTier - 1)] : 15;
-      const frontShieldTier = blessings['B08'] || 0;
-      const frontShieldPct = frontShieldTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'B08')!.tiers[Math.min(2, frontShieldTier - 1)] : 0;
-      const empressTier = blessings['B04'] || 0;
-      const floorHealPct = empressTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'B04')!.tiers[Math.min(2, empressTier - 1)] : 0;
+      const startEnergyTier = blessings['ARCANA_07'] || 0;
+      const startEnergy = startEnergyTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_07')!.tiers[Math.min(2, startEnergyTier - 1)] : 15;
+      const frontShieldTier = blessings['ARCANA_08'] || 0;
+      const frontShieldPct = frontShieldTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_08')!.tiers[Math.min(2, frontShieldTier - 1)] : 0;
+      const empressTier = blessings['ARCANA_03'] || 0;
+      const floorHealPct = empressTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_03')!.tiers[Math.min(2, empressTier - 1)] : 0;
 
       const prevHeroes = simRef.current.heroes;
       const newHeroes: CombatHeroUnit[] = partyIds.map((id, idx) => {
@@ -446,8 +455,8 @@ export default function App() {
         if (rem >= sim.currentSegmentBp) {
           rem -= sim.currentSegmentBp;
           sim.staggerSegments -= 1;
-          // Check Caelum 5-star passive: Breaking 1 bar heals team 10% HP
-          const caelum = sim.heroes.find((h) => h.id === 'H02' && h.hp > 0 && h.prog.stars >= 5);
+          // Check Caelum (H04) 5-star passive: Breaking 1 bar heals team 10% HP
+          const caelum = sim.heroes.find((h) => h.id === 'H04' && h.hp > 0 && h.prog.stars >= 5);
           if (caelum) {
             sim.heroes.forEach((ally) => {
               if (ally.hp > 0) ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(ally.maxHp * 0.1));
@@ -471,7 +480,7 @@ export default function App() {
               spawnFloatingText('STAGGERED! +50% DMG', mainBoss.x, mainBoss.y - 45, '#fbbf24', 1.35);
               spawnBurstParticles(mainBoss.x, mainBoss.y, '#fbbf24', 22);
             }
-            // Check Kallen 5-star passive: Reset Active Skill CD
+            // Check Kallen (H01) 5-star passive: Reset Active Skill CD
             const kallen = sim.heroes.find((h) => h.id === 'H01' && h.hp > 0 && h.prog.stars >= 5);
             if (kallen) kallen.activeCd = 0;
           }
@@ -492,15 +501,15 @@ export default function App() {
       const effAtk = Math.round(
         hero.stats.atk *
           (1 + hero.buffs.atkPct / 100) *
-          (hero.shield > 0 && sim.heroes.some((h) => h.id === 'H05' && h.hp > 0 && h.prog.stars >= 4) ? 1.15 : 1)
+          (hero.shield > 0 && sim.heroes.some((h) => h.id === 'H13' && h.hp > 0 && h.prog.stars >= 4) ? 1.15 : 1)
       );
 
-      // Handle Ultimate Cut-In & Energy Refund (Blessing B12)
+      // Handle Ultimate Cut-In & Energy Refund (Tarot ARCANA_10 Wheel of Fortune)
       if (skill.type === 'Ultimate') {
         hero.energy = 0;
-        const loopTier = blessings['B12'] || 0;
+        const loopTier = blessings['ARCANA_10'] || 0;
         if (loopTier > 0) {
-          const chance = BLESSING_CARDS.find((b) => b.id === 'B12')!.tiers[Math.min(2, loopTier - 1)];
+          const chance = BLESSING_CARDS.find((b) => b.id === 'ARCANA_10')!.tiers[Math.min(2, loopTier - 1)];
           if (Math.random() * 100 < chance) {
             hero.energy = 50;
             spawnFloatingText('CHRONO LOOP +50% EN', hero.x, hero.y - 25, '#38bdf8', 0.95);
@@ -533,7 +542,7 @@ export default function App() {
         sfx.play('skill');
       }
 
-      // Party Heals & Shields (Aurelia Chain & Ultimate, Caelum Basic/Active/Chain/Ult)
+      // Party Heals & Shields (Aurelia H13 Chain & Ultimate, Lumina H15)
       if (skill.isHeal) {
         sfx.play('heal');
         const healMult = (multPct / 100) * (1 + hero.stats.healingBonus / 100);
@@ -545,7 +554,7 @@ export default function App() {
           if (overheal > 0 && hero.stats.fourPieceSet === 'Radiant Dawn') {
             ally.shield = Math.min(Math.round(ally.maxHp * 0.3), ally.shield + overheal);
           }
-          if (skill.type === 'Ultimate' && hero.id === 'H05') {
+          if (skill.type === 'Ultimate' && hero.id === 'H13') {
             ally.shield = Math.max(ally.shield, Math.round(ally.maxHp * 0.2));
             ally.energy = Math.min(100, ally.energy + 15);
           }
@@ -557,10 +566,10 @@ export default function App() {
       if (hero.id === 'H01' && skill.type === 'Basic') {
         hero.energy = Math.min(100, hero.energy + 4 * (hero.stats.energyCharge / 100));
       }
-      if (hero.id === 'H02' && skill.type === 'Basic') {
+      if (hero.id === 'H04' && skill.type === 'Basic') {
         hero.shield = Math.min(Math.round(hero.maxHp * 0.35), hero.shield + Math.round(hero.maxHp * 0.05));
       }
-      if (hero.id === 'H02' && skill.type === 'Active') {
+      if (hero.id === 'H04' && skill.type === 'Active') {
         sim.heroes.forEach((ally) => {
           if (ally.stats.rowPosition === 'Front') {
             ally.buffs.defPct = 25;
@@ -568,33 +577,33 @@ export default function App() {
           }
         });
       }
-      if (hero.id === 'H02' && skill.type === 'Chain') {
+      if (hero.id === 'H04' && skill.type === 'Chain') {
         const aliveAllies = sim.heroes.filter((a) => a.hp > 0).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
         if (aliveAllies[0]) {
           aliveAllies[0].shield += Math.round(aliveAllies[0].maxHp * 0.15);
         }
       }
-      if (hero.id === 'H02' && skill.type === 'Ultimate') {
+      if (hero.id === 'H04' && skill.type === 'Ultimate') {
         sim.bossParts.forEach((b) => { b.shield = 0; });
         sim.heroes.forEach((ally) => {
           ally.buffs.breakPct = 25;
           ally.buffs.breakTimer = 5.0;
         });
       }
-      if (hero.id === 'H05' && skill.type === 'Basic') {
+      if (hero.id === 'H13' && skill.type === 'Basic') {
         const lowest = sim.heroes.filter((a) => a.hp > 0).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
         if (lowest) {
           const hAmt = Math.round(effAtk * 0.35 * (1 + hero.stats.healingBonus / 100));
           lowest.hp = Math.min(lowest.maxHp, lowest.hp + hAmt);
         }
       }
-      if (hero.id === 'H05' && skill.type === 'Active') {
+      if (hero.id === 'H13' && skill.type === 'Active') {
         sim.heroes.forEach((ally) => {
           ally.buffs.critRatePct = 15;
           ally.buffs.critTimer = 4.0;
         });
       }
-      if (hero.id === 'H06' && skill.type === 'Basic') {
+      if (hero.id === 'H16' && skill.type === 'Basic') {
         hero.energy = Math.min(100, hero.energy + 5 * (hero.stats.energyCharge / 100));
       }
 
@@ -614,8 +623,8 @@ export default function App() {
         let ignoreDefPct = 0;
         let forceTrueDmg = false;
 
-        const loverTier = blessings['B10'] || 0;
-        const reactionBlessBonus = loverTier > 0 ? 1 + BLESSING_CARDS.find((b) => b.id === 'B10')!.tiers[Math.min(2, loverTier - 1)] / 100 : 1.0;
+        const loverTier = blessings['ARCANA_06'] || 0;
+        const reactionBlessBonus = loverTier > 0 ? 1 + BLESSING_CARDS.find((b) => b.id === 'ARCANA_06')!.tiers[Math.min(2, loverTier - 1)] / 100 : 1.0;
 
         if (skill.reactionTrigger === 'MELTDOWN' && target.debuffs.some((d) => d.type === 'Freeze')) {
           target.debuffs = target.debuffs.filter((d) => d.type !== 'Freeze');
@@ -658,8 +667,8 @@ export default function App() {
         if (reactionTriggered) {
           pushLog(`${hero.data.name} triggered ${reactionTriggered} on ${target.name}!`);
           spawnBurstParticles(target.x, target.y, hero.data.colors.primary, 18);
-          // Yuzuki 5-star passive: +15% Energy on any reaction
-          const yuzuki = sim.heroes.find((h) => h.id === 'H03' && h.hp > 0 && h.prog.stars >= 5);
+          // Yuzuki (H07) 5-star passive: +15% Energy on any reaction
+          const yuzuki = sim.heroes.find((h) => h.id === 'H07' && h.hp > 0 && h.prog.stars >= 5);
           if (yuzuki) yuzuki.energy = Math.min(100, yuzuki.energy + 15);
         }
 
@@ -671,14 +680,14 @@ export default function App() {
 
         let critChance = hero.stats.critRate + hero.buffs.critRatePct + (hasLuminous ? 20 : 0);
         if (hero.id === 'H01' && hero.prog.stars >= 4 && hasBurn) critChance += 20;
-        if (hero.id === 'H06' && skill.type === 'Ultimate' && target.hp / target.maxHp < 0.3) critChance = 100;
+        if (hero.id === 'H16' && skill.type === 'Ultimate' && target.hp / target.maxHp < 0.3) critChance = 100;
 
         const isCrit = Math.random() * 100 < critChance;
         let critMult = 1.0;
         if (isCrit) {
           let cDmg = hero.stats.critDmg;
           if (hero.id === 'H01' && skill.type === 'Ultimate') cDmg += 30;
-          if (hero.id === 'H04' && hero.prog.stars >= 5 && bleedEntry && bleedEntry.stacks >= 5) cDmg += 50;
+          if (hero.id === 'H10' && hero.prog.stars >= 5 && bleedEntry && bleedEntry.stacks >= 5) cDmg += 50;
           if (sim.isStaggered && skill.type === 'Ultimate' && hero.stats.fourPieceSet === 'Eclipse') cDmg += 60;
           critMult = cDmg / 100;
           if (hero.stats.fourPieceSet === 'Starfall Executioner') ignoreDefPct = Math.min(100, ignoreDefPct + 15);
@@ -700,31 +709,31 @@ export default function App() {
           if (hasCorrosion) bonusMult *= 1.35;
           if (hero.id === 'H01' && hasBurn) bonusMult *= 1.25;
         }
-        if (hero.id === 'H06' && hero.prog.stars >= 4 && target.hp / target.maxHp < 0.5) bonusMult *= 1.25;
+        if (hero.id === 'H16' && hero.prog.stars >= 4 && target.hp / target.maxHp < 0.5) bonusMult *= 1.25;
         if (target.voidStacks > 0) bonusMult *= 1 + target.voidStacks * 0.05;
 
-        // Staggered Multiplier (+50% base + Blessing B09)
+        // Staggered Multiplier (+50% base + Tarot ARCANA_16 The Tower)
         if (sim.isStaggered) {
-          const ruinTier = blessings['B09'] || 0;
-          const ruinBonus = ruinTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'B09')!.tiers[Math.min(2, ruinTier - 1)] / 100 : 0;
+          const ruinTier = blessings['ARCANA_16'] || 0;
+          const ruinBonus = ruinTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_16')!.tiers[Math.min(2, ruinTier - 1)] / 100 : 0;
           bonusMult *= 1.5 + ruinBonus;
         }
 
-        // Kahori 4* Double Basic Attack proc & Ultimate Bleed Detonation
+        // Kahori (H10) 4* Double Basic Attack proc & Ultimate Bleed Detonation
         let totalMult = multPct / 100;
-        if (hero.id === 'H04' && skill.type === 'Basic' && hero.prog.stars >= 4 && Math.random() < 0.3) {
+        if (hero.id === 'H10' && skill.type === 'Basic' && hero.prog.stars >= 4 && Math.random() < 0.3) {
           totalMult *= 1.5;
         }
-        if (hero.id === 'H04' && skill.type === 'Ultimate' && bleedEntry) {
+        if (hero.id === 'H10' && skill.type === 'Ultimate' && bleedEntry) {
           totalMult += bleedEntry.stacks * 1.5;
         }
 
         let finalDmg = Math.max(1, Math.round(effAtk * totalMult * critMult * defMitigation * bonusMult));
 
-        // Blessing B11: Death's Execution True DMG below 25% HP
-        const deathTier = blessings['B11'] || 0;
+        // Tarot ARCANA_13: Death's Execution True DMG below 25% HP
+        const deathTier = blessings['ARCANA_13'] || 0;
         if (deathTier > 0 && target.hp / target.maxHp < 0.25) {
-          const extraPct = BLESSING_CARDS.find((b) => b.id === 'B11')!.tiers[Math.min(2, deathTier - 1)];
+          const extraPct = BLESSING_CARDS.find((b) => b.id === 'ARCANA_13')!.tiers[Math.min(2, deathTier - 1)];
           finalDmg = Math.round(finalDmg * (1 + extraPct / 100));
         }
 
@@ -761,7 +770,7 @@ export default function App() {
         // Status Proc Chance Budget (Module 3.2): Base + Gear Effect Hit Rate - Boss Effect RES
         if (skill.debuff) {
           const isShocked = target.debuffs.some((d) => d.type === 'Shock');
-          const effRes = skill.type === 'Ultimate' && hero.id === 'H03' ? Math.max(0, target.effectRes - 25) : target.effectRes;
+          const effRes = skill.type === 'Ultimate' && hero.id === 'H07' ? Math.max(0, target.effectRes - 25) : target.effectRes;
           const freezeBonus = skill.debuff === 'Freeze' && isShocked ? 30 : 0;
           const procChance = baseProcPct + hero.stats.effectHitRate + freezeBonus - effRes;
 
@@ -804,8 +813,8 @@ export default function App() {
             applyBreakDamage(sim, sim.maxSegmentBp);
             pushLog('Eye of Madness shattered! Old God Core loses 1 Stagger Segment!');
           }
-          // Noctis 5-star passive: +50% Energy on kill
-          const noctis = sim.heroes.find((h) => h.id === 'H06' && h.hp > 0 && h.prog.stars >= 5);
+          // Noctis (H16) 5-star passive: +50% Energy on kill
+          const noctis = sim.heroes.find((h) => h.id === 'H16' && h.hp > 0 && h.prog.stars >= 5);
           if (noctis) noctis.energy = Math.min(100, noctis.energy + 50);
         }
       });
@@ -817,7 +826,7 @@ export default function App() {
 
       // Slot 1: Emergency / Break / Shield
       const g1 = hero.prog.gambit1;
-      if (g1 === 'BOSS_STAGGER_OPEN' && !sim.isStaggered && sim.staggerSegments > 0 && hero.id === 'H02') return true;
+      if (g1 === 'BOSS_STAGGER_OPEN' && !sim.isStaggered && sim.staggerSegments > 0 && hero.id === 'H04') return true;
       if (g1 === 'ALLY_HP_BELOW_50' && sim.heroes.some((a) => a.hp > 0 && a.hp / a.maxHp < 0.5)) return true;
       if (g1 === 'BOSS_SHIELD_ACTIVE' && aliveParts.some((b) => b.shield > 0)) return true;
       if (g1 === 'ALWAYS_READY') return true;
@@ -918,7 +927,7 @@ export default function App() {
       });
 
       // Update Boss Parts & DoTs
-      const yuzuki4StarActive = sim.heroes.some((h) => h.id === 'H03' && h.hp > 0 && h.prog.stars >= 4);
+      const yuzuki4StarActive = sim.heroes.some((h) => h.id === 'H07' && h.hp > 0 && h.prog.stars >= 4);
       const berserkMult = sim.isBerserk ? 2.0 : 1.0;
       const berserkSpdMult = sim.isBerserk ? 1.5 : 1.0;
 
@@ -966,11 +975,11 @@ export default function App() {
           if (targetHero.hp <= 0) return;
           const effDef = targetHero.stats.def * (1 + targetHero.buffs.defPct / 100);
           let dmg = Math.round(rawBossDmg * (100 / (100 + effDef * 0.22)));
-          if (targetHero.id === 'H02' && targetHero.prog.stars >= 4) dmg = Math.round(dmg * 0.82);
+          if (targetHero.id === 'H04' && targetHero.prog.stars >= 4) dmg = Math.round(dmg * 0.82);
           if (yuzuki4StarActive && b.debuffs.length > 0) dmg = Math.round(dmg * 0.85);
 
-          // Blessing B08 Thorns (15%)
-          if ((blessings['B08'] || 0) > 0 && targetHero.stats.rowPosition === 'Front') {
+          // Tarot ARCANA_08 Strength Thorns (15%)
+          if ((blessings['ARCANA_08'] || 0) > 0 && targetHero.stats.rowPosition === 'Front') {
             b.hp = Math.max(1, b.hp - Math.round(dmg * 0.15));
           }
 
@@ -995,9 +1004,9 @@ export default function App() {
             spawnFloatingText('TITAN SHIELD', targetHero.x, targetHero.y - 18, '#38bdf8', 0.9);
           }
 
-          // Aurelia 5-Star Seraphic Halo Revive (once per wave)
+          // Aurelia (H13) 5-Star Seraphic Halo Revive (once per wave)
           if (targetHero.hp <= 0) {
-            const aurelia = sim.heroes.find((h) => h.id === 'H05' && h.hp > 0 && h.prog.stars >= 5 && !h.reviveUsed);
+            const aurelia = sim.heroes.find((h) => h.id === 'H13' && h.hp > 0 && h.prog.stars >= 5 && !h.reviveUsed);
             if (aurelia) {
               aurelia.reviveUsed = true;
               targetHero.hp = Math.round(targetHero.maxHp * 0.3);
@@ -1309,7 +1318,7 @@ export default function App() {
         ? 'ATK%'
         : slot === 'Armor'
         ? 'DEF%'
-        : slot === 'Ring'
+        : slot === 'Ring I' || slot === 'Ring II'
         ? ringPool[Math.floor(Math.random() * ringPool.length)]
         : sigilPool[Math.floor(Math.random() * sigilPool.length)];
 
@@ -1389,7 +1398,7 @@ export default function App() {
     const earned = Math.max(25, Math.round(floor * 28 * shardMult));
     setTimeShards((t) => t + earned);
     setFloor(1);
-    setBlessings({ B01: 1 });
+    setBlessings({ ARCANA_19: 1 });
     sfx.play('stagger');
     initFloorWave(1, false);
     if (shellState === 'GAME_OVER') setShellState('PLAYING');
@@ -1417,13 +1426,21 @@ export default function App() {
 
         {/* Top Bar Info */}
         <div className="relative z-10 flex items-center justify-between text-xs text-slate-400">
-          <span>Chrono Spire: Starfall Protocol · Master Blueprint Build v2.0</span>
-          <button
-            onClick={() => setShowWiki(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            Official Game Wiki & Balance Sheets
-          </button>
+          <span>Chrono Spire: Starfall Protocol · Master Blueprint Build v2.1 (Pure TypeScript)</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowV21Workbench(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-200 hover:bg-amber-400/30 transition-colors cursor-pointer font-semibold"
+            >
+              SSOT v2.1 Systems Workbench
+            </button>
+            <button
+              onClick={() => setShowWiki(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Official Game Wiki & Balance Sheets
+            </button>
+          </div>
         </div>
 
         {/* Center Bespoke SVG Title Lockup & Hero Centerpiece */}
@@ -1465,7 +1482,7 @@ export default function App() {
           </svg>
 
           <p className="text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
-            Command a 5-Resonator squad across 6 Continents, shatter the 5-bar Stagger Gauge of the cosmic Old Gods before the 60-second Berserk Corruption, and detonate 4 Elemental Reactions.
+            Command a 5-Resonator squad across 6 Continents (18 Day-1 Resonators), shatter the 5-bar Stagger Gauge of the cosmic Old Gods before the 60-second Berserk Corruption, and detonate 9 Elemental Reactions.
           </p>
 
           <div className="pt-2 flex items-center justify-center gap-4">
@@ -1474,6 +1491,12 @@ export default function App() {
               className="px-8 py-3.5 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-lg shadow-amber-500/20 transition-colors cursor-pointer"
             >
               Enter the Spire
+            </button>
+            <button
+              onClick={() => setShowV21Workbench(true)}
+              className="px-6 py-3.5 text-sm font-medium text-amber-200 bg-slate-900 border border-amber-400/50 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            >
+              v2.1 Systems Workbench
             </button>
             <button
               onClick={() => setShowWiki(true)}
@@ -1490,6 +1513,7 @@ export default function App() {
         </div>
 
         {showWiki && <WikiModal onClose={() => setShowWiki(false)} />}
+        {showV21Workbench && <V21SystemsWorkbench onClose={() => setShowV21Workbench(false)} />}
       </div>
     );
   }
@@ -1536,7 +1560,13 @@ export default function App() {
         </nav>
 
         {/* Zone 3: Primary Action */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => setShowV21Workbench(true)}
+            className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-slate-900 border border-amber-400/50 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            v2.1 Workbench
+          </button>
           <button
             onClick={() => setShowWiki(true)}
             className="px-3.5 py-1.5 text-xs font-medium text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
@@ -2142,11 +2172,11 @@ export default function App() {
            ============================================================ */}
         {activeTab === 'FORGE' && (
           <div className="flex-1 min-h-0 grid grid-cols-12 gap-6 p-6 overflow-y-auto max-w-7xl mx-auto w-full">
-            {/* Left 5 Cols: Equipped 4 Slots & Inventory */}
+            {/* Left 5 Cols: Equipped 5 Slots & Inventory */}
             <div className="col-span-12 lg:col-span-5 space-y-4">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-slate-100">Resonator Gear Loadout (4 Slots)</h2>
+                  <h2 className="text-sm font-bold text-slate-100">Resonator Gear Loadout (5 Slots)</h2>
                   <select
                     value={selectedHeroId}
                     onChange={(e) => setSelectedHeroId(e.target.value)}
@@ -2161,7 +2191,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {(['Weapon', 'Armor', 'Ring', 'Core Sigil'] as GearSlot[]).map((slot) => {
+                  {ALL_GEAR_SLOTS.map((slot) => {
                     const item = gearInventory.find(
                       (g) => g.equippedBy === selectedHeroId && g.slot === slot
                     );
@@ -2173,13 +2203,15 @@ export default function App() {
                         key={slot}
                         onClick={() => item && setSelectedGearId(item.id)}
                         className={`p-3 rounded-lg border transition-colors cursor-pointer ${
+                          slot === 'Core Sigil' ? 'col-span-2 ' : ''
+                        }${
                           isSelected
                             ? 'bg-slate-800 border-amber-400'
                             : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>{slot}</span>
+                          <span>{slot === 'Core Sigil' ? 'Core Sigil (Exotic — Independent of Set)' : slot}</span>
                           {item && <span className="font-mono text-amber-300">+{item.level}</span>}
                         </div>
                         {item && mainVals ? (
@@ -2222,8 +2254,8 @@ export default function App() {
                       <div className="text-[11px] text-slate-400">
                         2-PC: {s.twoPieceDesc} · 4-PC: {s.fourPieceDesc}
                       </div>
-                      <div className="flex items-center gap-1.5 pt-1">
-                        {(['Weapon', 'Armor', 'Ring', 'Core Sigil'] as GearSlot[]).map((slot) => (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {ALL_GEAR_SLOTS.map((slot) => (
                           <button
                             key={slot}
                             disabled={gold < 900}
@@ -2678,6 +2710,7 @@ export default function App() {
       )}
 
       {showWiki && <WikiModal onClose={() => setShowWiki(false)} />}
+      {showV21Workbench && <V21SystemsWorkbench onClose={() => setShowV21Workbench(false)} />}
     </div>
   );
 }
