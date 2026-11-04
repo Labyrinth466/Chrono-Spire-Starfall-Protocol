@@ -3,48 +3,82 @@ name: Deploy Web Game & Notify Discord
 on:
   push:
     branches:
-      - main  # หรือ master ตามชื่อ branch หลักของคุณ
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  deploy-and-notify:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # 1. Deploy ตัวเกมขึ้น GitHub Pages อัตโนมัติ
-      - name: 🚀 Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          folder: . # หรือโฟลเดอร์ที่เก็บไฟล์ index.html (เช่น dist หรือ build)
-          branch: gh-pages
+          node-version: 20
+          cache: 'npm'
 
-      # 2. บอทส่งข้อความและการ์ดกดเล่นเกมเข้า Discord ทันที
+      - name: 📦 Install dependencies
+        run: npm ci || npm install
+
+      - name: 🏗️ Build Vite project
+        run: npm run build
+
+      - name: 🚀 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+
       - name: 📢 Send Build Notification to Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_BUILD_WEBHOOK }}
         run: |
-          GAME_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Discord Webhook not set, skipping notification."
+            exit 0
+          fi
+
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            COLOR=5763719 # Green
+            TITLE="🚀 New Game Build Available!"
+            DESC="ตัวเกมเวอร์ชันล่าสุดถูกอัปเดตเรียบร้อยแล้ว!\nสามารถคลิกปุ่มลิงก์ด้านล่างเพื่อเปิดทดลองเล่นได้ทันที"
+          else
+            COLOR=15548997 # Red
+            TITLE="❌ Game Build Failed"
+            DESC="การ Build ล้มเหลว โปรดตรวจสอบรายละเอียดที่แท็บ Actions บน GitHub"
+          fi
+
           COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_AUTHOR="${{ github.actor }}"
-          
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d '{
-                 "username": "Chrono Spire Deployer",
-                 "avatar_url": "https://cdn-icons-png.flaticon.com/512/686/686589.png",
-                 "embeds": [{
-                   "title": "🚀 New Game Build Available!",
-                   "description": "**ตัวเกมเวอร์ชันล่าสุดถูกอัปเดตเรียบร้อยแล้ว!**\nสามารถคลิกปุ่มลิงก์ด้านล่างเพื่อเปิดทดลองเล่นได้ทันที",
-                   "color": 16753920,
-                   "fields": [
-                     { "name": "📝 Commit Note", "value": "'"$COMMIT_MSG"'", "inline": false },
-                     { "name": "👤 Updated By", "value": "'"$COMMIT_AUTHOR"'", "inline": true },
-                     { "name": "🕹️ Play Game Link", "value": "[👉 คลิกที่นี่เพื่อเปิดเล่นเกมบนเบราว์เซอร์]('"$GAME_URL"')", "inline": false }
-                   ],
-                   "footer": { "text": "Chrono Spire CI/CD • Auto Build System" },
-                   "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-                 }]
-               }' \
-               ${{ secrets.DISCORD_BUILD_WEBHOOK }}
+          COMMITTER="${{ github.actor }}"
+          PLAY_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+
+          JSON_PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg desc "$DESC" \
+            --arg msg "$COMMIT_MSG" \
+            --arg user "$COMMITTER" \
+            --arg url "$PLAY_URL" \
+            --argjson color "$COLOR" \
+            '{
+              username: "Chrono Spire Deployer",
+              embeds: [{
+                title: $title,
+                description: $desc,
+                color: $color,
+                fields: [
+                  { name: "📝 Commit Note", value: $msg, inline: false },
+                  { name: "👤 Updated By", value: $user, inline: true },
+                  { name: "🕹️ Play Game Link", value: ("[👉 คลิกที่นี่เพื่อเปิดเล่นเกมบนเบราว์เซอร์](" + $url + ")"), inline: false }
+                ],
+                footer: { text: "Chrono Spire CI/CD • Auto Build System" }
+              }]
+            }')
+
+          curl -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "$DISCORD_WEBHOOK"
