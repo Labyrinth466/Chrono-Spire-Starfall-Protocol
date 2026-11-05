@@ -1,5 +1,11 @@
-import { BossPartUnit, CombatHeroUnit, FloatingText } from './combatEngine.ts';
-import { ELEMENT_META, ResonatorData } from '../data/resonators.ts';
+import {
+  BossPartUnit,
+  CombatHeroUnit,
+  FloatingText,
+  HeroAnimState,
+  ImpactShockwave,
+} from './combatEngine.ts';
+import { ELEMENT_META, RESONATORS, ResonatorData } from '../data/resonators.ts';
 
 export interface Particle {
   x: number;
@@ -13,6 +19,68 @@ export interface Particle {
   maxLife: number;
 }
 
+/**
+ * Adjusts a hex color brightness by percentage (-100 to +100) for 3D Voxel Top & Side faces.
+ */
+function shadeVoxelHex(hex: string, percent: number): string {
+  if (!hex || !hex.startsWith('#') || (hex.length !== 7 && hex.length !== 4)) return hex;
+  let fullHex = hex;
+  if (hex.length === 4) {
+    fullHex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+  }
+  const num = parseInt(fullHex.slice(1), 16);
+  const amt = Math.round(2.55 * percent);
+  const r = Math.max(0, Math.min(255, (num >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+  const b = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+/**
+ * Draws a 3D Extruded Isometric Voxel Block with Front Face, Lit Top Face, and Shaded Side Depth Face.
+ */
+function drawVoxelBox(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  depth: number,
+  frontColor: string
+) {
+  const dx = depth * 0.65;
+  const dy = -depth * 0.48;
+
+  // 1. Shaded Right/Back Depth Face
+  ctx.fillStyle = shadeVoxelHex(frontColor, -26);
+  ctx.beginPath();
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w + dx, y + dy);
+  ctx.lineTo(x + w + dx, y + h + dy);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.fill();
+
+  // 2. Lit Top Bevel Face
+  ctx.fillStyle = shadeVoxelHex(frontColor, 26);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + dx, y + dy);
+  ctx.lineTo(x + w + dx, y + dy);
+  ctx.lineTo(x + w, y);
+  ctx.closePath();
+  ctx.fill();
+
+  // 3. Primary Front Face
+  ctx.fillStyle = frontColor;
+  ctx.fillRect(x, y, w, h);
+}
+
+/**
+ * Renders a 3D Extruded HD-2D Isometric Voxel Resonator Sprite (H01–H18)
+ * on a 16x24 voxel grid with top-lit bevels, 3D side extrusion, perspective magic circles,
+ * and Volumetric Glow slash/elemental burst effects.
+ */
 export function drawPixelHeroSprite(
   ctx: CanvasRenderingContext2D,
   hero: ResonatorData,
@@ -21,175 +89,590 @@ export function drawPixelHeroSprite(
   scale: number,
   time: number,
   isAttacking: boolean,
-  hitFlash: number
+  hitFlash: number,
+  animState: HeroAnimState = isAttacking ? 'ATTACK_COMBO' : 'IDLE',
+  animTimer: number = isAttacking ? 0.25 : 0,
+  showElementalAura: boolean = false,
+  auraIntensity: number = 0
 ) {
   ctx.save();
-  const bob = Math.sin(time * 5 + x * 0.1) * 2.5;
-  const lunge = isAttacking ? 14 : 0;
-  ctx.translate(Math.round(x + lunge), Math.round(y + bob));
 
-  // Ground shadow
-  ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
+  const elMeta = ELEMENT_META[hero.element];
+  const p = Math.max(2, 2.8 * scale); // Crisp HD-2D pixel block unit
+
+  // Compute 6-pose animation offsets
+  const breathBob = Math.sin(time * 4.8 + x * 0.05) * (1.8 * scale);
+  const capeWave = Math.sin(time * 6.5 + x * 0.1) * p;
+  let poseOffsetX = 0;
+  let poseOffsetY = breathBob;
+  let weaponAngle = 0;
+  let showSlashArc = false;
+  let showCastCircle = false;
+  let showUltPillar = false;
+  let showDashTrail = false;
+
+  if (animState === 'RUN_DASH') {
+    poseOffsetX = 24 * scale;
+    poseOffsetY = -3 * scale;
+    weaponAngle = 0.25;
+    showDashTrail = true;
+  } else if (animState === 'ATTACK_COMBO') {
+    const swing = Math.sin(Math.min(1, animTimer * 4) * Math.PI);
+    poseOffsetX = (18 + swing * 12) * scale;
+    poseOffsetY = -4 * scale * swing;
+    weaponAngle = -0.65 + swing * 1.35;
+    showSlashArc = true;
+  } else if (animState === 'SKILL_CAST') {
+    poseOffsetX = 8 * scale;
+    poseOffsetY = -7 * scale + Math.sin(time * 14) * 2;
+    weaponAngle = -0.85;
+    showCastCircle = true;
+  } else if (animState === 'ULTIMATE_CAST') {
+    poseOffsetX = 12 * scale;
+    poseOffsetY = -16 * scale + Math.sin(time * 18) * 3;
+    weaponAngle = -1.1;
+    showCastCircle = true;
+    showUltPillar = true;
+  } else if (animState === 'STAGGER_HIT' || hitFlash > 0) {
+    poseOffsetX = -10 * scale;
+    poseOffsetY = 2 * scale;
+    weaponAngle = 0.45;
+  }
+
+  const drawX = Math.round(x + poseOffsetX);
+  const drawY = Math.round(y + poseOffsetY);
+  const groundY = Math.round(y + 27 * scale);
+
+  // 1. SOFT AMBIENT OCCLUSION ELLIPSE & FLOOR ELEMENTAL REFLECTION
+  ctx.save();
+  // Planar floor light reflection bloom
+  const reflGrad = ctx.createRadialGradient(drawX, groundY, 2, drawX, groundY, 34 * scale);
+  reflGrad.addColorStop(0, `${elMeta.color}44`);
+  reflGrad.addColorStop(0.55, 'rgba(15, 23, 42, 0.25)');
+  reflGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+  ctx.fillStyle = reflGrad;
   ctx.beginPath();
-  ctx.ellipse(0, 26 * scale, 18 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(drawX, groundY + 2 * scale, 32 * scale, 10 * scale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Elemental underfoot aura ring
-  ctx.strokeStyle = hero.colors.glow;
-  ctx.lineWidth = 2;
+  // Soft Ambient Occlusion shadow under feet
+  const aoGrad = ctx.createRadialGradient(drawX, groundY, 1, drawX, groundY, 20 * scale);
+  aoGrad.addColorStop(0, 'rgba(2, 6, 23, 0.88)');
+  aoGrad.addColorStop(0.65, 'rgba(2, 6, 23, 0.52)');
+  aoGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+  ctx.fillStyle = aoGrad;
   ctx.beginPath();
-  ctx.ellipse(0, 26 * scale, 21 * scale, 7 * scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(drawX, groundY, 20 * scale, 6.5 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Planar inverted reflection silhouette on polished ruin stone
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = elMeta.color;
+  ctx.fillRect(drawX - 4 * p, groundY + 2, 8 * p, 5 * p);
+  ctx.fillRect(drawX - 2.5 * p, groundY + 7 * p, 5 * p, 3 * p);
+  ctx.restore();
+
+  // 2. 3D PERSPECTIVE ISOMETRIC MAGIC RING & SKILL/ULTIMATE RUNE CIRCLE
+  ctx.save();
+  ctx.translate(drawX, groundY);
+  const ringR = (showCastCircle ? 27 : 20) * scale;
+  const ringH = (showCastCircle ? 9.5 : 6.8) * scale;
+
+  // Outer Volumetric Magic Ring Bloom
+  ctx.strokeStyle = showCastCircle ? '#fde047' : elMeta.color;
+  ctx.globalAlpha = showCastCircle ? 0.92 : 0.62;
+  ctx.lineWidth = (showCastCircle ? 2.6 : 1.8) * scale;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, ringR, ringH, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  const p = 3 * scale; // Pixel block unit
+  // Inner Isometric Rune Ring + Perspective Rotating Glyphs
+  ctx.strokeStyle = hero.colors.secondary;
+  ctx.globalAlpha = showCastCircle ? 0.85 : 0.42;
+  ctx.lineWidth = 1.2 * scale;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, ringR * 0.76, ringH * 0.76, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
-  // Cloak / Back accessory (Wing or Fox tails or Cape)
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.primary;
+  for (let g = 0; g < 4; g++) {
+    const gAng = time * 2.4 + (g * Math.PI) / 2;
+    const gx = Math.cos(gAng) * ringR * 0.88;
+    const gy = Math.sin(gAng) * ringH * 0.88;
+    drawVoxelBox(ctx, gx - 1.2 * scale, gy - 1.2 * scale, 2.4 * scale, 2.4 * scale, 2 * scale, showCastCircle ? '#fde047' : elMeta.color);
+  }
+  ctx.restore();
+
+  // Ultimate Pillar of Light
+  if (showUltPillar) {
+    ctx.save();
+    const pilGrad = ctx.createLinearGradient(drawX - 24 * scale, drawY - 60 * scale, drawX + 24 * scale, groundY);
+    pilGrad.addColorStop(0, 'rgba(253, 224, 71, 0)');
+    pilGrad.addColorStop(0.5, `${elMeta.color}55`);
+    pilGrad.addColorStop(1, 'rgba(253, 224, 71, 0.45)');
+    ctx.fillStyle = pilGrad;
+    ctx.fillRect(drawX - 22 * scale, drawY - 65 * scale, 44 * scale, 95 * scale);
+    ctx.restore();
+  }
+
+  // Dash Afterimage Ghost
+  if (showDashTrail) {
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    ctx.translate(Math.round(drawX - 18 * scale), drawY);
+    ctx.fillStyle = elMeta.color;
+    ctx.fillRect(-4 * p, -8 * p, 8 * p, 14 * p);
+    ctx.restore();
+  }
+
+  // Translate to Character Center
+  ctx.translate(drawX, drawY);
+
+  // 2.5 DISTINCT 6-ELEMENT RADIAL AURA PULSE (Triggered when Buffed or Energy >= 50%)
+  if (showElementalAura) {
+    ctx.save();
+    const pulseWave = 0.5 + 0.5 * Math.sin(time * 5.5 + x * 0.03);
+    const baseRadius = (24 + pulseWave * 7) * scale * (0.85 + auraIntensity * 0.25);
+    const auraAlpha = Math.min(0.85, (0.28 + auraIntensity * 0.28) * (0.8 + pulseWave * 0.2));
+
+    // Radial Aura Bloom Gradient
+    const auraGrad = ctx.createRadialGradient(0, -2 * p, 2 * scale, 0, -2 * p, baseRadius);
+    if (hero.element === 'Fire') {
+      auraGrad.addColorStop(0, 'rgba(251, 146, 60, 0.55)');
+      auraGrad.addColorStop(0.55, 'rgba(239, 68, 68, 0.28)');
+      auraGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+    } else if (hero.element === 'Cryo') {
+      auraGrad.addColorStop(0, 'rgba(186, 230, 253, 0.55)');
+      auraGrad.addColorStop(0.55, 'rgba(56, 189, 248, 0.28)');
+      auraGrad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+    } else if (hero.element === 'Electro') {
+      auraGrad.addColorStop(0, 'rgba(233, 213, 255, 0.58)');
+      auraGrad.addColorStop(0.55, 'rgba(192, 132, 252, 0.30)');
+      auraGrad.addColorStop(1, 'rgba(147, 51, 234, 0)');
+    } else if (hero.element === 'Wind') {
+      auraGrad.addColorStop(0, 'rgba(167, 243, 208, 0.52)');
+      auraGrad.addColorStop(0.55, 'rgba(52, 211, 153, 0.26)');
+      auraGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+    } else if (hero.element === 'Light') {
+      auraGrad.addColorStop(0, 'rgba(254, 240, 138, 0.62)');
+      auraGrad.addColorStop(0.55, 'rgba(251, 191, 36, 0.30)');
+      auraGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    } else {
+      // Dark
+      auraGrad.addColorStop(0, 'rgba(192, 132, 252, 0.52)');
+      auraGrad.addColorStop(0.55, 'rgba(88, 28, 135, 0.38)');
+      auraGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    }
+
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(0, -2 * p, baseRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Element-Specific Radial Pulse Geometry
+    ctx.globalAlpha = auraAlpha;
+    ctx.strokeStyle = auraIntensity >= 0.99 ? '#fde047' : elMeta.color;
+    ctx.fillStyle = elMeta.color;
+    ctx.lineWidth = (1.4 + auraIntensity * 0.6) * scale;
+
+    if (hero.element === 'Fire') {
+      // Rising solar-crimson flame tongues around torso
+      for (let f = 0; f < 5; f++) {
+        const flameAng = (f * Math.PI * 2) / 5 + time * 2.2;
+        const fx = Math.cos(flameAng) * (15 * scale);
+        const fy = Math.sin(flameAng) * (10 * scale) - ((time * 22 + f * 9) % (14 * scale));
+        ctx.beginPath();
+        ctx.moveTo(fx, fy - 5 * scale);
+        ctx.quadraticCurveTo(fx + 3.5 * scale, fy, fx, fy + 4 * scale);
+        ctx.quadraticCurveTo(fx - 3.5 * scale, fy, fx, fy - 5 * scale);
+        ctx.fill();
+      }
+    } else if (hero.element === 'Cryo') {
+      // Rotating hexagonal frost ring & 4 crystalline diamond shards
+      for (let c = 0; c < 4; c++) {
+        const cAng = time * 1.6 + (c * Math.PI) / 2;
+        const cx = Math.cos(cAng) * 18 * scale;
+        const cy = Math.sin(cAng) * 12 * scale - 2 * p;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 4 * scale);
+        ctx.lineTo(cx + 2.6 * scale, cy);
+        ctx.lineTo(cx, cy + 4 * scale);
+        ctx.lineTo(cx - 2.6 * scale, cy);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    } else if (hero.element === 'Electro') {
+      // Crackling radial electric arcs
+      for (let l = 0; l < 4; l++) {
+        const lAng = time * 6 + (l * Math.PI) / 2;
+        const r1 = 11 * scale;
+        const r2 = 20 * scale;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(lAng) * r1, Math.sin(lAng) * r1 - 2 * p);
+        ctx.lineTo(Math.cos(lAng + 0.22) * ((r1 + r2) * 0.5), Math.sin(lAng + 0.22) * ((r1 + r2) * 0.5) - 2 * p);
+        ctx.lineTo(Math.cos(lAng - 0.12) * r2, Math.sin(lAng - 0.12) * r2 - 2 * p);
+        ctx.stroke();
+      }
+    } else if (hero.element === 'Wind') {
+      // Sweeping emerald spiral vortex crescents
+      for (let w = 0; w < 3; w++) {
+        const wStart = time * 3.8 + (w * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(0, -2 * p, (15 + w * 2.5) * scale, wStart, wStart + Math.PI * 0.65);
+        ctx.stroke();
+      }
+    } else if (hero.element === 'Light') {
+      // Radiant solar halo + 4-point celestial cross rays
+      ctx.beginPath();
+      ctx.arc(0, -2 * p, 17 * scale + pulseWave * 3 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let r = 0; r < 4; r++) {
+        const rAng = time * 1.1 + (r * Math.PI) / 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(rAng) * 10 * scale, Math.sin(rAng) * 10 * scale - 2 * p);
+        ctx.lineTo(Math.cos(rAng) * 23 * scale, Math.sin(rAng) * 23 * scale - 2 * p);
+        ctx.stroke();
+      }
+    } else {
+      // Dark: Counter-rotating abyssal eclipse rings
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.arc(0, -2 * p, 17 * scale, -time * 2.4, -time * 2.4 + Math.PI * 1.6);
+      ctx.stroke();
+      ctx.strokeStyle = '#c084fc';
+      ctx.beginPath();
+      ctx.arc(0, -2 * p, 21 * scale, time * 1.8, time * 1.8 + Math.PI * 1.4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  // 3. 3D VOXEL ELEMENTAL ORBITAL CUBES (6 Elements)
+  ctx.save();
+  for (let m = 0; m < 3; m++) {
+    const ang = time * 3.2 + (m * Math.PI * 2) / 3;
+    const ox = Math.cos(ang) * 6.8 * p;
+    const oy = Math.sin(ang) * 2.6 * p - 2 * p;
+    const moteColor = m % 2 === 0 ? elMeta.color : hero.colors.secondary;
+    drawVoxelBox(ctx, ox, oy, 1.5 * p, 1.5 * p, 1.4 * p, moteColor);
+  }
+  ctx.restore();
+
+  const flashWhite = hitFlash > 0.02;
+  const cPrimary = flashWhite ? '#ffffff' : hero.colors.primary;
+  const cSecondary = flashWhite ? '#ffffff' : hero.colors.secondary;
+  const cHair = flashWhite ? '#ffffff' : hero.colors.hair;
+  const cWeapon = flashWhite ? '#ffffff' : hero.colors.weapon;
+  const vDepth = 2.2 * p; // 3D Voxel extrusion thickness
+
+  // 4. 3D VOXEL BACK ACCESSORY / WINGS / NINE-TAILS / FLOWING CLOAK
   if (hero.id === 'H10') {
-    // Nine-tailed wind fox tails (Kahori)
-    ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#fde047';
-    ctx.fillRect(-7 * p, -2 * p, 3 * p, 6 * p);
-    ctx.fillRect(-9 * p, 0, 3 * p, 5 * p);
-  } else if (hero.id === 'H13') {
-    // Valkyrie Light Wings (Aurelia)
-    ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#fef08a';
-    ctx.fillRect(-8 * p, -6 * p, 4 * p, 7 * p);
-    ctx.fillRect(-10 * p, -4 * p, 2 * p, 4 * p);
+    // Kahori: 3D Extruded Nine-Tailed Fox Spirit Tails
+    for (let t = 0; t < 4; t++) {
+      const tailY = (-4 + t * 2.2) * p + capeWave * 0.4;
+      drawVoxelBox(
+        ctx,
+        (-8 - (t % 2) * 2) * p,
+        tailY,
+        4 * p,
+        2.2 * p,
+        vDepth * 0.85,
+        flashWhite ? '#ffffff' : '#fde047'
+      );
+      drawVoxelBox(
+        ctx,
+        (-9.2 - (t % 2) * 2) * p,
+        tailY,
+        1.5 * p,
+        1.5 * p,
+        vDepth * 0.7,
+        flashWhite ? '#ffffff' : '#34d399'
+      );
+    }
+  } else if (hero.id === 'H13' || hero.id === 'H14') {
+    // Aurelia / Solarius: 3D Extruded Seraphic Solar Wings
+    const wingCol = flashWhite ? '#ffffff' : '#fef08a';
+    drawVoxelBox(ctx, -9.5 * p, -7 * p + capeWave * 0.3, 5.2 * p, 2 * p, vDepth * 0.8, wingCol);
+    drawVoxelBox(ctx, -11.5 * p, -4.8 * p + capeWave * 0.5, 6.2 * p, 2 * p, vDepth * 0.8, wingCol);
+    drawVoxelBox(ctx, -8.5 * p, -2.6 * p + capeWave * 0.4, 4.2 * p, 2 * p, vDepth * 0.8, wingCol);
+  } else if (hero.id === 'H17' || hero.id === 'H18') {
+    // Malakor / Vespera: 3D Abyssal Shadow Mantle
+    drawVoxelBox(ctx, -8 * p, -4 * p, 5 * p, 10 * p + capeWave * 0.5, vDepth, flashWhite ? '#ffffff' : '#311042');
+    drawVoxelBox(ctx, -9.2 * p, -2 * p, 2.2 * p, 7 * p, vDepth * 0.8, cPrimary);
   } else {
-    // Tactical cape
-    ctx.fillRect(-6 * p, -2 * p, 4 * p, 8 * p);
+    // Flowing 3D Voxel Tactical Cloak
+    drawVoxelBox(ctx, -6.5 * p, -2 * p, 4 * p, 8 * p, vDepth * 0.85, cPrimary);
+    drawVoxelBox(ctx, -8.2 * p, 1 * p + capeWave * 0.35, 3 * p, 5.5 * p, vDepth * 0.75, cSecondary);
   }
 
-  // Boots / Legs
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#1e293b';
-  ctx.fillRect(-3 * p, 4 * p, 2 * p, 4 * p);
-  ctx.fillRect(1 * p, 4 * p, 2 * p, 4 * p);
+  // 5. 3D VOXEL LEGS & ARMORED GREAVES
+  const legStride = animState === 'RUN_DASH' || animState === 'ATTACK_COMBO' ? 1.5 * p : 0;
+  const legCol = flashWhite ? '#ffffff' : '#1e293b';
+  drawVoxelBox(ctx, -3 * p - legStride * 0.5, 4 * p, 2.3 * p, 4.5 * p, vDepth * 0.85, legCol);
+  drawVoxelBox(ctx, 1 * p + legStride * 0.5, 4 * p, 2.3 * p, 4.5 * p, vDepth * 0.85, legCol);
+  drawVoxelBox(ctx, -3.1 * p - legStride * 0.5, 7 * p, 2.5 * p, 1.6 * p, vDepth * 0.9, cSecondary);
+  drawVoxelBox(ctx, 0.9 * p + legStride * 0.5, 7 * p, 2.5 * p, 1.6 * p, vDepth * 0.9, cSecondary);
 
-  // Armor / Torso
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.primary;
-  ctx.fillRect(-4 * p, -3 * p, 8 * p, 7 * p);
+  // 6. 3D VOXEL TORSO ARMOR, PAULDRONS & CHEST CORE (16x24 Grid)
+  drawVoxelBox(ctx, -4 * p, -3.5 * p, 8 * p, 7.5 * p, vDepth, flashWhite ? '#ffffff' : '#1e293b');
+  drawVoxelBox(ctx, -3.2 * p, -3 * p, 6.4 * p, 6 * p, vDepth * 1.05, cPrimary);
+  // 3D Pauldrons & Chest Core
+  drawVoxelBox(ctx, -5 * p, -3.6 * p, 2.2 * p, 2.6 * p, vDepth * 1.1, cSecondary);
+  drawVoxelBox(ctx, 2.8 * p, -3.6 * p, 2.2 * p, 2.6 * p, vDepth * 1.1, cSecondary);
+  drawVoxelBox(ctx, -1.5 * p, -1.6 * p, 3 * p, 2.6 * p, vDepth * 0.6, elMeta.color);
 
-  // Trim / Chest emblem
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.secondary;
-  ctx.fillRect(-2 * p, -2 * p, 4 * p, 3 * p);
+  // 7. 3D VOXEL HEAD, EXPRESSIVE EYES & 3D LAYERED HAIRSTYLE
+  drawVoxelBox(ctx, -3 * p, -8.5 * p, 6 * p, 5 * p, vDepth * 1.05, flashWhite ? '#ffffff' : '#fde68a');
 
-  // Head / Face
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#fde68a';
-  ctx.fillRect(-3 * p, -8 * p, 6 * p, 5 * p);
+  // Eyes (glowing in Ultimate state)
+  ctx.fillStyle = animState === 'ULTIMATE_CAST' ? elMeta.color : '#0f172a';
+  ctx.fillRect(0.6 * p, -6.5 * p, 1.2 * p, 1.6 * p);
+  ctx.fillRect(2.1 * p, -6.5 * p, 1 * p, 1.6 * p);
 
-  // Eyes (looking right towards boss)
-  ctx.fillStyle = '#0f172a';
-  ctx.fillRect(1 * p, -6 * p, 1 * p, 1.5 * p);
+  // 3D Extruded Crown, Side Locks & Front Bangs
+  drawVoxelBox(ctx, -4.1 * p, -10.6 * p, 8.2 * p, 2.8 * p, vDepth * 1.15, cHair);
+  drawVoxelBox(ctx, -4.6 * p, -8.5 * p, 2.3 * p, 5.6 * p, vDepth * 1.1, cHair);
+  drawVoxelBox(ctx, 2.1 * p, -9.2 * p, 2.1 * p, 2.3 * p, vDepth * 0.7, cHair);
 
-  // Hair / Helmet
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.hair;
-  ctx.fillRect(-4 * p, -10 * p, 8 * p, 3 * p);
-  ctx.fillRect(-4 * p, -8 * p, 2 * p, 4 * p);
-
-  // Fox ears for Kahori (H10) or Halo for Aurelia (H13)
+  // Character-Specific 3D Headgear / Ears / Horns / Halo
   if (hero.id === 'H10') {
-    ctx.fillRect(-3 * p, -12 * p, 2 * p, 2 * p);
-    ctx.fillRect(1 * p, -12 * p, 2 * p, 2 * p);
-  } else if (hero.id === 'H13') {
-    ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(-3 * p, -13 * p, 6 * p, 1 * p);
+    drawVoxelBox(ctx, -3.2 * p, -13 * p, 2 * p, 2.5 * p, vDepth * 0.8, cHair);
+    drawVoxelBox(ctx, 1.2 * p, -13 * p, 2 * p, 2.5 * p, vDepth * 0.8, cHair);
+  } else if (hero.id === 'H13' || hero.id === 'H15') {
+    drawVoxelBox(ctx, -3.6 * p, -13.4 * p, 7.2 * p, 1.3 * p, vDepth * 0.9, '#fbbf24');
+  } else if (hero.id === 'H04' || hero.id === 'H09' || hero.id === 'H14') {
+    drawVoxelBox(ctx, -1.2 * p, -12.2 * p, 2.6 * p, 2.2 * p, vDepth * 0.9, cSecondary);
+  } else if (hero.id === 'H07' || hero.id === 'H03' || hero.id === 'H06') {
+    drawVoxelBox(ctx, -6.8 * p, -8 * p + capeWave * 0.25, 2.6 * p, 5.2 * p, vDepth * 0.9, cHair);
+  } else if (hero.id === 'H17') {
+    drawVoxelBox(ctx, -4 * p, -13.2 * p, 1.9 * p, 2.9 * p, vDepth * 0.85, '#f43f5e');
+    drawVoxelBox(ctx, 2.2 * p, -13.2 * p, 1.9 * p, 2.9 * p, vDepth * 0.85, '#f43f5e');
   }
 
-  // Weapon (Right hand forward)
-  ctx.fillStyle = hitFlash > 0 ? '#ffffff' : hero.colors.weapon;
-  if (hero.id === 'H04') {
-    // Heavy Tower Shield + Railgun Lance (Caelum)
-    ctx.fillStyle = hitFlash > 0 ? '#ffffff' : '#38bdf8';
-    ctx.fillRect(3 * p, -4 * p, 3 * p, 9 * p);
-    ctx.fillStyle = hero.colors.weapon;
-    ctx.fillRect(5 * p, -2 * p, 8 * p, 2 * p);
-  } else if (hero.id === 'H01') {
-    // Flame Greatsword (Kallen)
-    ctx.fillRect(4 * p, -7 * p, 2 * p, 10 * p);
-    ctx.fillStyle = '#fde047';
-    ctx.fillRect(3 * p, 1 * p, 4 * p, 1.5 * p);
+  // 8. 3D VOXEL SIGNATURE WEAPON & VOLUMETRIC SLASH BLOOM
+  ctx.save();
+  ctx.translate(3 * p, -1 * p);
+  ctx.rotate(weaponAngle);
+
+  const wDepth = 1.6 * p;
+  if (hero.id === 'H01' || hero.id === 'H17') {
+    // 3D Colossal Greatsword / Cleaver
+    drawVoxelBox(ctx, 1 * p, -9.5 * p, 2.8 * p, 13.5 * p, wDepth, cWeapon);
+    drawVoxelBox(ctx, 1.6 * p, -8.2 * p, 1.3 * p, 10.2 * p, wDepth * 0.6, elMeta.color);
+    drawVoxelBox(ctx, -0.6 * p, 2 * p, 5.8 * p, 1.6 * p, wDepth * 1.1, '#fde047');
+  } else if (hero.id === 'H04' || hero.id === 'H09') {
+    // 3D Heavy Aegis Tower Shield + Railgun Lance
+    drawVoxelBox(ctx, 3.5 * p, -2.2 * p, 9.2 * p, 2.2 * p, wDepth, cSecondary);
+    drawVoxelBox(ctx, 0, -5.2 * p, 4 * p, 10.4 * p, wDepth * 1.25, flashWhite ? '#ffffff' : '#1e293b');
+    drawVoxelBox(ctx, 0.8 * p, -4 * p, 2.3 * p, 8 * p, wDepth * 0.8, elMeta.color);
   } else if (hero.id === 'H16') {
-    // Abyssal Chain Scythe (Noctis)
-    ctx.fillRect(4 * p, -8 * p, 1.5 * p, 12 * p);
-    ctx.fillRect(4 * p, -8 * p, 6 * p, 2 * p);
+    // 3D Abyssal Chain Scythe
+    drawVoxelBox(ctx, 1.5 * p, -10.5 * p, 1.6 * p, 14.5 * p, wDepth, cWeapon);
+    drawVoxelBox(ctx, 1.5 * p, -10.5 * p, 7.2 * p, 2.5 * p, wDepth, elMeta.color);
+    drawVoxelBox(ctx, 6.6 * p, -8 * p, 2.1 * p, 2.6 * p, wDepth * 0.8, elMeta.color);
+  } else if (hero.role === 'Ranged DPS' || hero.id === 'H12' || hero.id === 'H13') {
+    // 3D Astral Bow / Plasma Rifle
+    drawVoxelBox(ctx, 1 * p, -5.5 * p, 1.8 * p, 11 * p, wDepth * 0.9, cWeapon);
+    drawVoxelBox(ctx, 1.2 * p, -0.8 * p, 7.4 * p, 1.6 * p, wDepth * 0.8, elMeta.color);
   } else {
-    // Staff / Twin Blades / Bow
-    ctx.fillRect(4 * p, -6 * p, 2 * p, 9 * p);
+    // 3D Twin Elemental Blades / Chrono Staff
+    drawVoxelBox(ctx, 1.5 * p, -7.8 * p, 2.2 * p, 11.4 * p, wDepth, cWeapon);
+    drawVoxelBox(ctx, 0.7 * p, -9.4 * p, 3.6 * p, 3.2 * p, wDepth * 1.1, elMeta.color);
+  }
+
+  // Dynamic Volumetric Weapon Slash Crescent + Voxel Sparks on ATTACK_COMBO or ULTIMATE_CAST
+  if (showSlashArc || animState === 'ULTIMATE_CAST') {
+    ctx.save();
+    ctx.shadowColor = elMeta.color;
+    ctx.shadowBlur = 12 * scale;
+    ctx.strokeStyle = elMeta.color;
+    ctx.lineWidth = 4.2 * scale;
+    ctx.beginPath();
+    ctx.arc(2.2 * p, 0, 10 * p, -Math.PI * 0.58, Math.PI * 0.48);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8 * scale;
+    ctx.beginPath();
+    ctx.arc(2.6 * p, 0, 8.8 * p, -Math.PI * 0.42, Math.PI * 0.36);
+    ctx.stroke();
+    ctx.restore();
   }
 
   ctx.restore();
+  ctx.restore();
 }
 
+/**
+ * Renders the Articulated Multi-Part Old God Boss:
+ * - BOSS_MAIN: Old God Core (Azathoth's Remnant) with 5-Bar Crystalline Stagger Ring & Crack FX
+ * - TENTACLE_FRONT: Articulated Left Void Arm (Front Guard)
+ * - RIGHT_ARM: Articulated Right Abyssal Crusher Claw
+ * - EYE_BACK: Orbiting Cosmic Eye of Madness
+ */
 export function drawEldritchBossPart(
   ctx: CanvasRenderingContext2D,
   part: BossPartUnit,
   time: number,
   isFocused: boolean,
   isStaggered: boolean,
-  isBerserk: boolean
+  isBerserk: boolean,
+  staggerSegments: number = 5,
+  currentSegmentBp: number = 100,
+  maxSegmentBp: number = 100,
+  staggerWarningTimer: number = 0
 ) {
   if (!part.alive) return;
   ctx.save();
-  const floatY = Math.sin(time * 3 + part.x * 0.05) * 4;
-  ctx.translate(Math.round(part.x), Math.round(part.y + floatY));
 
-  const p = part.id === 'BOSS_MAIN' ? 4.5 : 3.2;
+  const floatY = Math.sin(time * 2.8 + part.x * 0.04) * (part.id === 'BOSS_MAIN' ? 6 : 4);
+  const recoilX = part.hitFlash > 0 ? 7 : 0;
+  const drawX = Math.round(part.x + recoilX);
+  const drawY = Math.round(part.y + floatY);
+  const p = part.id === 'BOSS_MAIN' ? 4.6 : 3.3;
 
-  // Shadow
-  ctx.fillStyle = 'rgba(2, 6, 23, 0.75)';
+  // 1. Soft Ambient Occlusion Ground Shadow & Eldritch Floor Glow
+  const groundY = Math.round(part.y + 28 * p * 0.45);
+  const shadowGrad = ctx.createRadialGradient(drawX, groundY, 2, drawX, groundY, 18 * p * 0.55);
+  shadowGrad.addColorStop(0, isBerserk ? 'rgba(225, 29, 72, 0.55)' : 'rgba(88, 28, 135, 0.55)');
+  shadowGrad.addColorStop(0.6, 'rgba(2, 6, 23, 0.75)');
+  shadowGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+  ctx.fillStyle = shadowGrad;
   ctx.beginPath();
-  ctx.ellipse(0, 26 * p * 0.45, 16 * p * 0.5, 5 * p * 0.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(drawX, groundY, 18 * p * 0.55, 6 * p * 0.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Berserk or Stagger Aura
+  ctx.translate(drawX, drawY);
+
+  // Berserk Pulsing Aura
   if (isBerserk) {
     ctx.strokeStyle = 'rgba(244, 63, 94, 0.75)';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 4]);
     ctx.beginPath();
-    ctx.arc(0, 0, 14 * p, 0, Math.PI * 2);
+    ctx.arc(0, 0, 14.5 * p, time * 2, time * 2 + Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([]);
   }
 
+  const flash = part.hitFlash > 0.02;
+
   if (part.id === 'TENTACLE_FRONT') {
-    // Frontline Void Tentacle Pillar
-    ctx.fillStyle = part.hitFlash > 0 ? '#ffffff' : '#3b0764';
-    ctx.fillRect(-5 * p, -10 * p, 10 * p, 20 * p);
-    ctx.fillStyle = part.hitFlash > 0 ? '#ffffff' : '#7e22ce';
-    ctx.fillRect(-3 * p, -8 * p, 6 * p, 16 * p);
-    // Glowing Void Runes
-    ctx.fillStyle = part.tauntTimer > 0 ? '#f59e0b' : '#c084fc';
-    ctx.fillRect(-2 * p, -5 * p, 4 * p, 2 * p);
-    ctx.fillRect(-2 * p, 0, 4 * p, 2 * p);
-    ctx.fillRect(-2 * p, 5 * p, 4 * p, 2 * p);
+    // LEFT ARM: Articulated Multi-Jointed Void Tentacle Bastion
+    for (let seg = 0; seg < 5; seg++) {
+      const jointWave = Math.sin(time * 4.2 + seg * 0.7) * (seg * 2.4);
+      const sy = (8 - seg * 4.2) * p;
+      const sw = (10 - seg * 1.1) * p;
+      ctx.fillStyle = flash ? '#ffffff' : seg % 2 === 0 ? '#3b0764' : '#581c87';
+      ctx.fillRect(-sw / 2 + jointWave, sy, sw, 4.4 * p);
+      // Glowing Runic Node on each joint
+      ctx.fillStyle = part.tauntTimer > 0 ? '#fbbf24' : '#c084fc';
+      ctx.fillRect(-1.8 * p + jointWave, sy + 1 * p, 3.6 * p, 1.8 * p);
+    }
+  } else if (part.id === 'RIGHT_ARM') {
+    // RIGHT ARM: Articulated Abyssal Crusher Claw
+    const armSwing = Math.sin(time * 3.6) * 5;
+    // Shoulder & Forearm joints
+    ctx.fillStyle = flash ? '#ffffff' : '#1e1b4b';
+    ctx.fillRect(-4 * p, -8 * p, 8 * p, 7 * p);
+    ctx.fillStyle = flash ? '#ffffff' : '#4c0519';
+    ctx.fillRect(-6 * p + armSwing * 0.5, -2 * p, 10 * p, 8 * p);
+    // Articulated Plasma Pincers
+    ctx.fillStyle = flash ? '#ffffff' : '#f43f5e';
+    ctx.fillRect(-9 * p + armSwing, 2 * p, 4 * p, 7 * p);
+    ctx.fillRect(-1 * p + armSwing, 3 * p, 3.5 * p, 6 * p);
   } else if (part.id === 'BOSS_MAIN') {
-    // Old God Core: Azathoth's Remnant
-    const coreColor = part.hitFlash > 0 ? '#ffffff' : isStaggered ? '#f59e0b' : '#4c0519';
-    const outerColor = part.hitFlash > 0 ? '#ffffff' : isStaggered ? '#78350f' : '#1e1b4b';
-    // Outer cosmic carapace
+    // CORE: Old God Azathoth's Remnant with Articulated Crown & Crystalline Armor
+    const wingBeat = Math.sin(time * 3.2) * 4;
+    const coreColor = flash ? '#ffffff' : isStaggered ? '#f59e0b' : '#4c0519';
+    const outerColor = flash ? '#ffffff' : isStaggered ? '#78350f' : '#1e1b4b';
+
+    // Articulated Floating Cosmic Wings
+    ctx.fillStyle = flash ? '#ffffff' : '#311042';
+    ctx.fillRect(-16 * p, -10 * p + wingBeat, 5 * p, 16 * p);
+    ctx.fillRect(11 * p, -10 * p - wingBeat, 5 * p, 16 * p);
+
+    // Outer Carapace Monolith
     ctx.fillStyle = outerColor;
     ctx.fillRect(-10 * p, -12 * p, 20 * p, 22 * p);
     ctx.fillRect(-13 * p, -7 * p, 26 * p, 12 * p);
-    // Crown horns
+
+    // Crown Horns
     ctx.fillStyle = '#a855f7';
-    ctx.fillRect(-9 * p, -16 * p, 3 * p, 4 * p);
-    ctx.fillRect(6 * p, -16 * p, 3 * p, 4 * p);
-    ctx.fillRect(-2 * p, -18 * p, 4 * p, 6 * p);
-    // Inner Core
+    ctx.fillRect(-9 * p, -17 * p, 3 * p, 5 * p);
+    ctx.fillRect(6 * p, -17 * p, 3 * p, 5 * p);
+    ctx.fillRect(-2.5 * p, -19 * p, 5 * p, 7 * p);
+
+    // Inner Eldritch Heart Core
     ctx.fillStyle = coreColor;
-    ctx.fillRect(-6 * p, -6 * p, 12 * p, 12 * p);
-    // Central Cosmic Eye
-    ctx.fillStyle = isBerserk ? '#ef4444' : '#38bdf8';
-    ctx.fillRect(-3 * p, -3 * p, 6 * p, 6 * p);
+    ctx.fillRect(-6.5 * p, -6.5 * p, 13 * p, 13 * p);
+
+    // Central All-Seeing Cosmic Eye
+    ctx.fillStyle = isBerserk ? '#ef4444' : isStaggered ? '#fde047' : '#38bdf8';
+    ctx.fillRect(-3.5 * p, -3.5 * p, 7 * p, 7 * p);
     ctx.fillStyle = '#020617';
-    ctx.fillRect(-1 * p, -2 * p, 2 * p, 4 * p);
+    ctx.fillRect(-1 * p, -2.5 * p, 2 * p, 5 * p);
+
+    // CRACK / FRACTURE EFFECT ON CORE BASED ON BROKEN STAGGER BARS (ONLY DURING SKILL CHARGE OR STAGGERED)
+    const brokenBars = 5 - staggerSegments;
+    if ((staggerWarningTimer > 0 && brokenBars > 0) || isStaggered) {
+      ctx.strokeStyle = isStaggered ? '#fde047' : '#38bdf8';
+      ctx.lineWidth = isStaggered ? 2.5 : 1.8;
+      for (let c = 0; c < Math.max(brokenBars, isStaggered ? 5 : 0); c++) {
+        const ang = (c * Math.PI * 2) / 5 + 0.3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(ang) * 6 * p, Math.sin(ang) * 6 * p);
+        ctx.lineTo(Math.cos(ang + 0.25) * 11 * p, Math.sin(ang + 0.25) * 11 * p);
+        ctx.stroke();
+      }
+    }
   } else if (part.id === 'EYE_BACK') {
-    // Eye of Madness (Backline Support)
-    ctx.fillStyle = part.hitFlash > 0 ? '#ffffff' : '#311042';
+    // COSMIC EYE: Orbiting Ocular Sentinel
+    ctx.rotate(Math.sin(time * 2.5) * 0.15);
+    ctx.fillStyle = flash ? '#ffffff' : '#311042';
     ctx.fillRect(-7 * p, -7 * p, 14 * p, 14 * p);
     ctx.fillStyle = '#f43f5e';
-    ctx.fillRect(-4 * p, -4 * p, 8 * p, 8 * p);
+    ctx.fillRect(-4.5 * p, -4.5 * p, 9 * p, 9 * p);
     ctx.fillStyle = '#fef08a';
     ctx.fillRect(-2 * p, -2 * p, 4 * p, 4 * p);
+  } else if (part.rivalHeroId) {
+    // 1v1 ASYNC ARENA RIVAL RESONATOR (Flipped Horizontally)
+    const rHero = RESONATORS.find((r) => r.id === part.rivalHeroId) || RESONATORS[0];
+    ctx.restore();
+    ctx.save();
+    ctx.translate(drawX, drawY);
+    ctx.scale(-1, 1);
+    drawPixelHeroSprite(
+      ctx,
+      rHero,
+      0,
+      0,
+      1.08,
+      time + 1.2,
+      part.attackTimer < 0.35,
+      part.hitFlash,
+      part.attackTimer < 0.35 ? 'ATTACK_COMBO' : 'IDLE',
+      0.2
+    );
+  } else {
+    // VOID MINIONS (MINION_1 Vanguard Husk, MINION_2 Starfall Stalker, MINION_3 Chrono Wraith)
+    const bob = Math.sin(time * 5 + (part.id === 'MINION_2' ? 1.5 : 0)) * 2.5;
+    ctx.fillStyle = flash ? '#ffffff' : part.id === 'MINION_1' ? '#311042' : part.id === 'MINION_2' ? '#1e1b4b' : '#3b0764';
+    ctx.fillRect(-6 * p, -8 * p + bob, 12 * p, 14 * p);
+    // Horned Void Crest
+    ctx.fillStyle = '#a855f7';
+    ctx.fillRect(-7 * p, -11 * p + bob, 3 * p, 4 * p);
+    ctx.fillRect(4 * p, -11 * p + bob, 3 * p, 4 * p);
+    // Glowing Abyssal Visor Eye
+    ctx.fillStyle = isStaggered ? '#fde047' : '#38bdf8';
+    ctx.fillRect(-3.5 * p, -4 * p + bob, 7 * p, 2.5 * p);
+    // Claws / Weapon Appendages
+    ctx.fillStyle = flash ? '#ffffff' : '#f43f5e';
+    ctx.fillRect(-9 * p, -2 * p - bob, 2.5 * p, 6 * p);
+    ctx.fillRect(6.5 * p, -2 * p - bob, 2.5 * p, 6 * p);
   }
 
   // Aegis Shield bubble if active
@@ -230,7 +713,12 @@ export function renderBattlefieldCanvas(
   manualFocusId: string | null,
   isStaggered: boolean,
   isBerserk: boolean,
-  shakeMag: number
+  shakeMag: number,
+  staggerSegments: number = 5,
+  currentSegmentBp: number = 100,
+  maxSegmentBp: number = 100,
+  shockwaves: ImpactShockwave[] = [],
+  staggerWarningTimer: number = 0
 ) {
   ctx.save();
   if (shakeMag > 0.2) {
@@ -239,87 +727,190 @@ export function renderBattlefieldCanvas(
     ctx.translate(dx, dy);
   }
 
-  // 1. HD-2D Starfall Spire Background Gradient
+  const horizonY = Math.round(height * 0.5);
+
+  // ============================================================================
+  // PARALLAX LAYER 1: SKY / COSMIC VOID, NEBULA CLOUDS & STARFALL METEORS
+  // ============================================================================
   const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
   if (isBerserk) {
-    skyGrad.addColorStop(0, '#1f091d');
-    skyGrad.addColorStop(0.55, '#2e0916');
-    skyGrad.addColorStop(1, '#090514');
+    skyGrad.addColorStop(0, '#190418');
+    skyGrad.addColorStop(0.5, '#2e0819');
+    skyGrad.addColorStop(1, '#080312');
   } else {
-    skyGrad.addColorStop(0, '#04091a');
-    skyGrad.addColorStop(0.55, '#0f172a');
+    skyGrad.addColorStop(0, '#030714');
+    skyGrad.addColorStop(0.5, '#0b1530');
     skyGrad.addColorStop(1, '#020617');
   }
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, width, height);
 
-  // Starfield & Astral Rift
-  ctx.fillStyle = isBerserk ? 'rgba(251, 113, 133, 0.35)' : 'rgba(148, 163, 184, 0.35)';
-  for (let i = 0; i < 36; i++) {
-    const sx = ((i * 97 + Math.floor(time * 6)) % width);
-    const sy = ((i * 53) % Math.floor(height * 0.52));
+  // Slowly drifting Cosmic Nebula Clouds
+  for (let n = 0; n < 3; n++) {
+    const nx = ((n * 380 + time * (8 + n * 3)) % (width + 300)) - 150;
+    const ny = 65 + n * 42;
+    const nebGrad = ctx.createRadialGradient(nx, ny, 10, nx, ny, 190);
+    if (isBerserk) {
+      nebGrad.addColorStop(0, 'rgba(244, 63, 94, 0.16)');
+      nebGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+    } else {
+      nebGrad.addColorStop(0, n % 2 === 0 ? 'rgba(56, 189, 248, 0.13)' : 'rgba(168, 85, 247, 0.13)');
+      nebGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+    }
+    ctx.fillStyle = nebGrad;
+    ctx.fillRect(nx - 190, ny - 190, 380, 380);
+  }
+
+  // Rotating Starfall Astral Vortex in Upper Sky
+  ctx.save();
+  ctx.translate(Math.round(width * 0.52), Math.round(horizonY * 0.48));
+  ctx.rotate(time * 0.18);
+  ctx.strokeStyle = isBerserk ? 'rgba(251, 113, 133, 0.22)' : 'rgba(251, 191, 36, 0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.arc(0, 0, 74, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 112, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Twinkling Starfield & Diagonal Starfall Meteors
+  ctx.fillStyle = isBerserk ? 'rgba(251, 113, 133, 0.45)' : 'rgba(226, 232, 240, 0.45)';
+  for (let i = 0; i < 42; i++) {
+    const sx = (i * 97 + Math.floor(time * 5)) % width;
+    const sy = (i * 53) % (horizonY - 12);
     const sz = (i % 3) + 1;
     ctx.fillRect(sx, sy, sz, sz);
   }
-
-  // Ancient Spire Pillars in background
-  const horizonY = Math.round(height * 0.52);
-  ctx.fillStyle = '#090d1f';
-  for (let i = 0; i < 6; i++) {
-    const px = Math.round((width / 6) * i + 40);
-    ctx.fillRect(px, 30, 34, horizonY - 30);
-    ctx.fillStyle = isBerserk ? 'rgba(244, 63, 94, 0.14)' : 'rgba(56, 189, 248, 0.12)';
-    ctx.fillRect(px + 14, 50, 6, horizonY - 70);
-    ctx.fillStyle = '#090d1f';
+  // Shooting Starfall Meteors
+  for (let m = 0; m < 4; m++) {
+    const cycle = (time * 160 + m * 270) % (width + 400);
+    const mx = width + 100 - cycle;
+    const my = ((cycle * 0.35 + m * 60) % (horizonY - 25));
+    ctx.strokeStyle = isBerserk ? 'rgba(251, 113, 133, 0.55)' : 'rgba(186, 230, 253, 0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.lineTo(mx + 28, my - 10);
+    ctx.stroke();
   }
 
-  // Perspective Stone Arena Floor
+  // ============================================================================
+  // PARALLAX LAYER 2: MIDDLE CHRONO SPIRE RUINS & FLOATING MONOLITHS
+  // ============================================================================
+  for (let i = 0; i < 7; i++) {
+    const parallaxX = ((i * 165 - time * 6) % (width + 160));
+    const px = parallaxX < -80 ? parallaxX + width + 160 : parallaxX;
+    const pillarH = 95 + (i % 3) * 28;
+    const py = horizonY - pillarH;
+
+    // Ruin Monolith Silhouette
+    ctx.fillStyle = '#080e24';
+    ctx.fillRect(px, py, 36, pillarH);
+    // Broken top steps
+    ctx.fillRect(px + 6, py - 10, 22, 10);
+    // Glowing Temporal Conduit inside pillar
+    ctx.fillStyle = isBerserk ? 'rgba(244, 63, 94, 0.22)' : 'rgba(56, 189, 248, 0.18)';
+    ctx.fillRect(px + 15, py + 14, 6, pillarH - 24);
+  }
+
+  // ============================================================================
+  // PARALLAX LAYER 3: RUNIC STONE COMBAT PLATFORM (GLOWING PARTY ELEMENT RUNES)
+  // ============================================================================
   const floorGrad = ctx.createLinearGradient(0, horizonY, 0, height);
-  floorGrad.addColorStop(0, isBerserk ? '#1e0b16' : '#0f172a');
+  floorGrad.addColorStop(0, isBerserk ? '#1c0915' : '#0d162c');
+  floorGrad.addColorStop(0.5, '#070c1a');
   floorGrad.addColorStop(1, '#020617');
   ctx.fillStyle = floorGrad;
   ctx.fillRect(0, horizonY, width, height - horizonY);
 
-  // Tactical Grid Perspective Lines
-  ctx.strokeStyle = isBerserk ? 'rgba(244, 63, 94, 0.16)' : 'rgba(148, 163, 184, 0.12)';
+  // Perspective Stone Tile Grid
+  ctx.strokeStyle = isBerserk ? 'rgba(244, 63, 94, 0.15)' : 'rgba(148, 163, 184, 0.11)';
   ctx.lineWidth = 1;
   for (let row = 0; row <= 5; row++) {
-    const ry = horizonY + Math.pow(row / 5, 1.35) * (height - horizonY - 20);
+    const ry = horizonY + Math.pow(row / 5, 1.35) * (height - horizonY - 16);
     ctx.beginPath();
     ctx.moveTo(0, ry);
     ctx.lineTo(width, ry);
     ctx.stroke();
   }
 
-  // Divider between Hero Squad (Left) and Old Gods (Right)
+  // Grand Runic Arena Circle & 5 Party Elemental Rune Seals on the Platform
+  ctx.save();
+  const arenaCenterX = Math.round(width * 0.48);
+  const arenaCenterY = Math.round(horizonY + (height - horizonY) * 0.52);
+
+  // Outer Sacred Runic Ring
+  ctx.strokeStyle = isBerserk ? 'rgba(244, 63, 94, 0.28)' : 'rgba(56, 189, 248, 0.22)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(arenaCenterX, arenaCenterY, width * 0.42, (height - horizonY) * 0.4, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 5 Glowing Elemental Runes synchronized with the active Resonators' Elements
+  heroes.forEach((h, idx) => {
+    const elColor = ELEMENT_META[h.data.element].color;
+    const runeAngle = (idx / Math.max(1, heroes.length)) * Math.PI - Math.PI * 0.5 + Math.sin(time * 0.8) * 0.05;
+    const rx = h.x;
+    const ry = h.y + 28;
+
+    ctx.strokeStyle = elColor;
+    ctx.globalAlpha = h.hp > 0 ? 0.35 + Math.sin(time * 4 + idx) * 0.12 : 0.08;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, 28, 9, runeAngle * 0.05, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // Tactical Front/Back Divider Line
   ctx.strokeStyle = 'rgba(251, 191, 36, 0.18)';
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
-  ctx.moveTo(width * 0.5, horizonY + 10);
-  ctx.lineTo(width * 0.46, height - 15);
+  ctx.moveTo(width * 0.48, horizonY + 10);
+  ctx.lineTo(width * 0.44, height - 15);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // 2. Draw Heroes (sorted by Y for depth)
+  // ============================================================================
+  // 2. DRAW 5 RESONATORS (SORTED BY Y DEPTH)
+  // ============================================================================
   const sortedHeroes = [...heroes].sort((a, b) => a.y - b.y);
   sortedHeroes.forEach((u) => {
     if (u.hp <= 0) return;
+    const hasActiveBuff =
+      u.buffs.atkTimer > 0 ||
+      u.buffs.defTimer > 0 ||
+      u.buffs.critTimer > 0 ||
+      u.buffs.breakTimer > 0 ||
+      u.shield > 0;
+    const showElementalAura = hasActiveBuff || u.energy >= 50;
+    const auraIntensity =
+      u.energy >= 99 ? 1.0 : u.energy >= 50 ? 0.55 + ((u.energy - 50) / 50) * 0.4 : 0.65;
+
     drawPixelHeroSprite(
       ctx,
       u.data,
       u.x,
       u.y,
-      1.1,
+      1.12,
       time,
       u.animOffset > 0.05,
-      u.hitFlash
+      u.hitFlash,
+      u.animState || (u.animOffset > 0.05 ? 'ATTACK_COMBO' : 'IDLE'),
+      u.animTimer || u.animOffset,
+      showElementalAura,
+      auraIntensity
     );
 
     // Compact World-Space HP + Shield + Energy Bar above Hero
-    const bw = 54;
+    const bw = 56;
     const bx = Math.round(u.x - bw / 2);
-    const by = Math.round(u.y - 48);
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+    const by = Math.round(u.y - 52);
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, 11);
 
     const hpPct = Math.max(0, Math.min(1, u.hp / u.maxHp));
@@ -328,12 +919,12 @@ export function renderBattlefieldCanvas(
 
     if (u.shield > 0) {
       const shPct = Math.min(1, u.shield / u.maxHp);
-      ctx.fillStyle = '#38bdf8';
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(bx, by, Math.round(bw * shPct), 2);
     }
 
     const enPct = Math.max(0, Math.min(1, u.energy / 100));
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = enPct >= 1 ? '#fde047' : '#fbbf24';
     ctx.fillRect(bx, by + 6, Math.round(bw * enPct), 3);
 
     if (u.lastActionTimer > 0 && u.lastActionLabel) {
@@ -344,29 +935,47 @@ export function renderBattlefieldCanvas(
     }
   });
 
-  // 3. Draw Boss Parts
-  const sortedBoss = [...bossParts].sort((a, b) => a.y - b.y);
+  // ============================================================================
+  // 3. DRAW MULTI-PART OLD GOD BOSS & CONDITIONAL WORLD-SPACE BOSS HUD
+  // ============================================================================
+  const BOSS_STATUS_BADGE_CFG: Record<string, { border: string; bg: string; maxDur: number }> = {
+    Burn: { border: '#f97316', bg: 'rgba(154, 52, 18, 0.92)', maxDur: 4.0 },
+    Freeze: { border: '#38bdf8', bg: 'rgba(12, 74, 110, 0.92)', maxDur: 2.0 },
+    Shock: { border: '#c084fc', bg: 'rgba(88, 28, 135, 0.92)', maxDur: 4.0 },
+    Bleed: { border: '#f43f5e', bg: 'rgba(136, 19, 55, 0.92)', maxDur: 4.0 },
+    'Luminous Mark': { border: '#fbbf24', bg: 'rgba(120, 53, 15, 0.92)', maxDur: 4.0 },
+    Corrosion: { border: '#a855f7', bg: 'rgba(59, 7, 100, 0.92)', maxDur: 4.0 },
+    Defenseless: { border: '#fb7185', bg: 'rgba(159, 18, 57, 0.92)', maxDur: 4.0 },
+    Slow: { border: '#34d399', bg: 'rgba(6, 78, 59, 0.92)', maxDur: 4.0 },
+    FREEZE_IMMUNE: { border: '#7dd3fc', bg: 'rgba(8, 47, 73, 0.95)', maxDur: 8.0 },
+  };
+
+  const sortedBoss = bossParts.filter((b) => b.alive && b.hp > 0).sort((a, b) => a.y - b.y);
   sortedBoss.forEach((b) => {
-    if (!b.alive) return;
+    const isMainBoss = b.id === 'BOSS_MAIN';
     drawEldritchBossPart(
       ctx,
       b,
       time,
       manualFocusId === b.id,
-      isStaggered && b.id === 'BOSS_MAIN',
-      isBerserk
+      isStaggered && isMainBoss,
+      isBerserk,
+      staggerSegments,
+      currentSegmentBp,
+      maxSegmentBp,
+      staggerWarningTimer
     );
 
-    // Part HP bar & Debuff icons
-    const bw = b.id === 'BOSS_MAIN' ? 110 : 78;
+    // Part HP bar directly above Boss segment
+    const bw = isMainBoss ? 116 : 82;
     const bx = Math.round(b.x - bw / 2);
-    const by = Math.round(b.y - (b.id === 'BOSS_MAIN' ? 88 : 54));
+    const by = Math.round(b.y - (isMainBoss ? 92 : 56));
 
     ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, 9);
 
     const hpPct = Math.max(0, Math.min(1, b.hp / b.maxHp));
-    ctx.fillStyle = isStaggered && b.id === 'BOSS_MAIN' ? '#f59e0b' : '#e11d48';
+    ctx.fillStyle = isStaggered && isMainBoss ? '#f59e0b' : '#e11d48';
     ctx.fillRect(bx, by, Math.round(bw * hpPct), 7);
 
     ctx.fillStyle = '#e2e8f0';
@@ -374,46 +983,313 @@ export function renderBattlefieldCanvas(
     ctx.textAlign = 'center';
     ctx.fillText(b.name, b.x, by - 5);
 
-    // Active Debuff Text Indicators
-    if (b.debuffs.length > 0) {
-      const debuffStr = b.debuffs
-        .map((d) => (d.stacks > 1 ? `${d.type} x${d.stacks}` : d.type))
-        .join(' · ');
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = '600 10px "JetBrains Mono", monospace';
-      ctx.fillText(debuffStr, b.x, by + 20);
+    // CONDITIONAL RENDER CHECK 1: Boss Skill Cast Bar + 5-Segment Stagger Gauge (ONLY when BOSS_MAIN is charging a skill)
+    const shouldRenderStaggerHud = isMainBoss && staggerWarningTimer > 0 && !isStaggered;
+    if (shouldRenderStaggerHud) {
+      const floatY = Math.sin(time * 2.8 + b.x * 0.04) * 6;
+      const recoilX = b.hitFlash > 0 ? 7 : 0;
+      const hudCenterX = Math.round(b.x + recoilX);
+      const hudBaseY = Math.round(b.y + floatY);
+      const totalW = 116;
+      const startX = Math.round(hudCenterX - totalW / 2);
+      const castY = Math.round(hudBaseY + 53);
+      const barY = castY + 9;
+      const castProgress = Math.max(0, Math.min(1, (4.0 - staggerWarningTimer) / 4.0));
+
+      ctx.save();
+      // 1. Boss Skill Cast Charge Bar (0% -> 100% over 4.0s)
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+      ctx.fillRect(startX - 1, castY - 1, totalW + 2, 7);
+      ctx.fillStyle = Math.floor(time * 10) % 2 === 0 ? '#f43f5e' : '#e879f9';
+      ctx.fillRect(startX, castY, Math.round(totalW * castProgress), 5);
+
+      ctx.fillStyle = '#fda4af';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`CASTING ${staggerWarningTimer.toFixed(1)}s`, hudCenterX, castY - 2);
+
+      // 2. 5-Segment Stagger Break Gauge under Cast Bar
+      const segW = (totalW - 8) / 5;
+      for (let s = 0; s < 5; s++) {
+        const sx = startX + s * (segW + 2);
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+        ctx.fillRect(sx - 1, barY - 1, segW + 2, 7);
+        let fillRatio = 0;
+        if (s < staggerSegments - 1) fillRatio = 1;
+        else if (s === staggerSegments - 1) fillRatio = Math.max(0, currentSegmentBp / Math.max(1, maxSegmentBp));
+        ctx.fillStyle = fillRatio > 0 ? '#fbbf24' : '#334155';
+        ctx.fillRect(sx, barY, Math.round(segW * fillRatio), 5);
+        if (fillRatio === 0) {
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx + 3, barY);
+          ctx.lineTo(sx + segW - 3, barY + 5);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
     }
+
+    // CONDITIONAL RENDER CHECK 2: 18x18px SVG Status Badge Group (Skip allocation & draw if no active debuffs/immunity)
+    const hasVisibleBadges =
+      (b.debuffs.length > 0 && b.debuffs.some((d) => d.remaining > 0)) || b.freezeResistTimer > 0;
+    if (hasVisibleBadges) {
+      const badgeMap = new Map<
+        string,
+        { type: string; remaining: number; maxDur: number; stacks: number; borderColor: string; bgColor: string }
+      >();
+      for (const d of b.debuffs) {
+        if (d.remaining <= 0) continue;
+        const meta = BOSS_STATUS_BADGE_CFG[d.type] || {
+          border: '#38bdf8',
+          bg: 'rgba(15, 23, 42, 0.92)',
+          maxDur: 4.0,
+        };
+        const prev = badgeMap.get(d.type);
+        if (prev) {
+          prev.stacks = Math.max(prev.stacks, d.stacks);
+          prev.remaining = Math.max(prev.remaining, d.remaining);
+        } else {
+          badgeMap.set(d.type, {
+            type: d.type,
+            remaining: d.remaining,
+            maxDur: meta.maxDur,
+            stacks: d.stacks,
+            borderColor: meta.border,
+            bgColor: meta.bg,
+          });
+        }
+      }
+
+      if (!badgeMap.has('Freeze') && b.freezeResistTimer > 0) {
+        const meta = BOSS_STATUS_BADGE_CFG.FREEZE_IMMUNE;
+        badgeMap.set('FREEZE_IMMUNE', {
+          type: 'FREEZE_IMMUNE',
+          remaining: b.freezeResistTimer,
+          maxDur: meta.maxDur,
+          stacks: 1,
+          borderColor: meta.border,
+          bgColor: meta.bg,
+        });
+      }
+
+      const badgeItems = Array.from(badgeMap.values());
+      if (badgeItems.length > 0) {
+        const iconSz = 18; // Strictly 18x18px per badge
+        const gap = 4;
+        const totalRowW = badgeItems.length * iconSz + (badgeItems.length - 1) * gap;
+        const startIconX = Math.round(b.x - totalRowW / 2);
+        const iconY = by - 36;
+        const animTick = Math.floor(time * 10);
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
+
+        for (let idx = 0; idx < badgeItems.length; idx++) {
+          const item = badgeItems[idx];
+          const ix = startIconX + idx * (iconSz + gap);
+          const durRatio = Math.max(0, Math.min(1, item.remaining / item.maxDur));
+          const isExpiring = item.remaining <= 1.5;
+          const tickPulse = isExpiring && animTick % 2 === 0;
+
+          // 1. Exact 18x18px Badge Box + Radial Countdown Sweep
+          ctx.fillStyle = item.bgColor;
+          ctx.fillRect(ix, iconY, iconSz, iconSz);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(ix, iconY, iconSz, iconSz);
+          ctx.clip();
+          if (durRatio < 1) {
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.48)';
+            ctx.beginPath();
+            ctx.moveTo(ix + 9, iconY + 9);
+            ctx.arc(
+              ix + 9,
+              iconY + 9,
+              14,
+              -Math.PI / 2,
+              -Math.PI / 2 + (1 - durRatio) * Math.PI * 2,
+              false
+            );
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+
+          ctx.strokeStyle = tickPulse ? '#ffffff' : item.borderColor;
+          ctx.lineWidth = 1.4;
+          ctx.strokeRect(ix + 0.5, iconY + 0.5, iconSz - 1, iconSz - 1);
+
+          // Animated countdown tick bar along bottom edge of 18x18px box
+          ctx.fillStyle = tickPulse ? '#fde047' : item.borderColor;
+          ctx.fillRect(ix + 1, iconY + iconSz - 3, Math.round((iconSz - 2) * durRatio), 2);
+
+          // 2. Vector Status Glyph centered inside 18x18px box
+          const cx = ix + 9;
+          const cy = iconY + 8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.fillStyle = tickPulse ? '#ffffff' : item.borderColor;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+
+          if (item.type === 'Burn') {
+            ctx.moveTo(cx, cy - 5);
+            ctx.quadraticCurveTo(cx + 5, cy, cx + 2, cy + 5);
+            ctx.quadraticCurveTo(cx, cy + 3, cx - 2, cy + 5);
+            ctx.quadraticCurveTo(cx - 5, cy, cx, cy - 5);
+            ctx.fill();
+          } else if (item.type === 'Freeze') {
+            ctx.moveTo(cx - 4, cy);
+            ctx.lineTo(cx + 4, cy);
+            ctx.moveTo(cx, cy - 4);
+            ctx.lineTo(cx, cy + 4);
+            ctx.moveTo(cx - 3, cy - 3);
+            ctx.lineTo(cx + 3, cy + 3);
+            ctx.moveTo(cx + 3, cy - 3);
+            ctx.lineTo(cx - 3, cy + 3);
+            ctx.stroke();
+          } else if (item.type === 'FREEZE_IMMUNE') {
+            ctx.moveTo(cx, cy - 5);
+            ctx.lineTo(cx + 4.5, cy - 3);
+            ctx.lineTo(cx + 3.5, cy + 2.5);
+            ctx.lineTo(cx, cy + 5);
+            ctx.lineTo(cx - 3.5, cy + 2.5);
+            ctx.lineTo(cx - 4.5, cy - 3);
+            ctx.closePath();
+            ctx.stroke();
+          } else if (item.type === 'Shock') {
+            ctx.moveTo(cx + 1, cy - 5);
+            ctx.lineTo(cx - 3, cy);
+            ctx.lineTo(cx, cy);
+            ctx.lineTo(cx - 1, cy + 5);
+            ctx.lineTo(cx + 3, cy - 1);
+            ctx.lineTo(cx, cy - 1);
+            ctx.closePath();
+            ctx.fill();
+          } else if (item.type === 'Bleed') {
+            ctx.moveTo(cx, cy - 5);
+            ctx.quadraticCurveTo(cx + 4.5, cy + 1, cx, cy + 5);
+            ctx.quadraticCurveTo(cx - 4.5, cy + 1, cx, cy - 5);
+            ctx.fill();
+          } else if (item.type === 'Luminous Mark') {
+            ctx.moveTo(cx, cy - 5);
+            ctx.lineTo(cx + 1.5, cy - 1.5);
+            ctx.lineTo(cx + 5, cy);
+            ctx.lineTo(cx + 1.5, cy + 1.5);
+            ctx.lineTo(cx, cy + 5);
+            ctx.lineTo(cx - 1.5, cy + 1.5);
+            ctx.lineTo(cx - 5, cy);
+            ctx.lineTo(cx - 1.5, cy - 1.5);
+            ctx.closePath();
+            ctx.fill();
+          } else if (item.type === 'Defenseless') {
+            ctx.moveTo(cx - 4, cy - 4);
+            ctx.lineTo(cx + 4, cy - 4);
+            ctx.lineTo(cx + 3, cy + 3);
+            ctx.lineTo(cx, cy + 5);
+            ctx.lineTo(cx - 3, cy + 3);
+            ctx.closePath();
+            ctx.moveTo(cx - 2, cy - 4);
+            ctx.lineTo(cx + 2, cy + 4);
+            ctx.stroke();
+          } else {
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // 3. Stack count inside top-right corner of the 18x18px badge
+          if (item.stacks > 1) {
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
+            ctx.fillRect(ix + iconSz - 8, iconY + 1, 7, 7);
+            ctx.fillStyle = '#fde047';
+            ctx.fillText(`${item.stacks}`, ix + iconSz - 4.5, iconY + 7);
+          }
+
+          // 4. Countdown timer label synced with animation tick above the 18x18px badge
+          ctx.fillStyle = tickPulse ? '#fde047' : item.type === 'FREEZE_IMMUNE' ? '#bae6fd' : '#f8fafc';
+          ctx.fillText(`${item.remaining.toFixed(1)}s`, ix + 9, iconY - 2);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // CONDITIONAL RENDER CHECK 3: Taunt Indicator (Only when tauntTimer > 0)
     if (b.tauntTimer > 0) {
       ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillText(`TAUNT ${b.tauntTimer.toFixed(1)}s`, b.x, by - 17);
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillText(`TAUNT ${b.tauntTimer.toFixed(1)}s`, b.x, by + 17);
     }
   });
 
-  // 4. Particles
-  particles.forEach((pt) => {
+  // ============================================================================
+  // 4. VOLUMETRIC ELEMENTAL REACTION SHOCKWAVES & 3D VOXEL PARTICLES
+  // ============================================================================
+  shockwaves.forEach((sw) => {
+    const progress = 1 - sw.life / sw.maxLife;
+    const radius = 12 + progress * sw.maxRadius;
     ctx.save();
-    ctx.globalAlpha = Math.max(0, pt.alpha);
-    ctx.fillStyle = pt.color;
-    ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+    ctx.globalAlpha = Math.max(0, sw.life / sw.maxLife);
+
+    // Volumetric Radial Bloom Fill
+    const bloomGrad = ctx.createRadialGradient(sw.x, sw.y, radius * 0.15, sw.x, sw.y, radius);
+    bloomGrad.addColorStop(0, `${sw.secondaryColor}44`);
+    bloomGrad.addColorStop(0.65, `${sw.color}33`);
+    bloomGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+    ctx.fillStyle = bloomGrad;
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = sw.color;
+    ctx.lineWidth = 4 * (1 - progress * 0.5);
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = sw.secondaryColor;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, radius * 0.72, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   });
 
-  // 5. Floating Combat Numbers
+  particles.forEach((pt) => {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, pt.alpha);
+    drawVoxelBox(ctx, pt.x, pt.y, pt.size, pt.size, Math.max(1.5, pt.size * 0.65), pt.color);
+    ctx.restore();
+  });
+
+  // ============================================================================
+  // 5. POP-UP ELEMENTAL DAMAGE NUMBERS & 9-REACTION CALLOUT BANNERS
+  // ============================================================================
   floatingTexts.forEach((ft) => {
     ctx.save();
-    const alpha = Math.min(1, (ft.life / ft.maxLife) * 1.6);
+    const lifeRatio = ft.life / ft.maxLife;
+    const popScale = lifeRatio > 0.8 ? 1 + (1 - lifeRatio) * 1.4 : 1;
+    const alpha = Math.min(1, lifeRatio * 1.65);
     ctx.globalAlpha = Math.max(0, alpha);
+    ctx.translate(ft.x, ft.y);
+    ctx.scale(popScale, popScale);
+
     ctx.font = `bold ${Math.round(13 * ft.scale)}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#020617';
-    ctx.fillText(ft.text, ft.x + 1, ft.y + 1);
+    ctx.fillText(ft.text, 1.5, 1.5);
     ctx.fillStyle = ft.color;
-    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.fillText(ft.text, 0, 0);
+
     if (ft.subtext) {
-      ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#fde68a';
-      ctx.fillText(ft.subtext, ft.x, ft.y - 14);
+      ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#020617';
+      ctx.fillText(`✦ ${ft.subtext} ✦`, 1, -15);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(`✦ ${ft.subtext} ✦`, 0, -16);
     }
     ctx.restore();
   });

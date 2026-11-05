@@ -127,12 +127,16 @@ export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: str
   );
 };
 
-export const PixelPreviewCanvas: React.FC<{ hero: ResonatorData }> = ({ hero }) => {
+export const PixelPreviewCanvas: React.FC<{ hero: ResonatorData; compact?: boolean; className?: string }> = ({
+  hero,
+  compact = false,
+  className,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     let animId = 0;
-    let start = performance.now();
+    const start = performance.now();
     const render = (now: number) => {
       const t = (now - start) / 1000;
       const canvas = canvasRef.current;
@@ -141,21 +145,21 @@ export const PixelPreviewCanvas: React.FC<{ hero: ResonatorData }> = ({ hero }) 
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           const isAtk = Math.floor(t * 1.5) % 3 === 0 && (t % 0.6) < 0.2;
-          drawPixelHeroSprite(ctx, hero, canvas.width / 2 - 6, canvas.height / 2 + 12, 1.85, t, isAtk, 0);
+          drawPixelHeroSprite(ctx, hero, canvas.width / 2 - 6, canvas.height / 2 + 12, compact ? 1.45 : 1.7, t, isAtk, 0);
         }
       }
       animId = requestAnimationFrame(render);
     };
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [hero]);
+  }, [hero, compact]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={180}
-      height={180}
-      className="w-[160px] h-[160px] mx-auto"
+      width={160}
+      height={160}
+      className={className || (compact ? 'w-16 h-16 mx-auto' : 'w-28 h-28 mx-auto')}
     />
   );
 };

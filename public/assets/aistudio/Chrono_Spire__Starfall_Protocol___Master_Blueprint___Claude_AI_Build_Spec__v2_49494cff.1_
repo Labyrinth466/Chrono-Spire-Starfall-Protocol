@@ -1,0 +1,514 @@
+﻿CHRONO SPIRE: STARFALL PROTOCOL — Master Blueprint, Official Game Wiki & SSOT (v2.1 Major Update)
+* เอกสารฉบับนี้คือ Single Source of Truth (SSOT), Game Wiki กลาง และ Official Patch Note ฉบับสมบูรณ์ของโปรเจกต์ Chrono Spire: Starfall Protocol สำหรับพินไว้บนสุดใน Discord ให้อ้างอิงร่วมกัน ใช้สำหรับส่งต่อให้ AI (เช่น Claude AI) นำไปอัปเดตและสร้างโค้ดตัวเกมได้ทันทีแบบ 100%
+📢 OFFICIAL PATCH NOTE (v2.1 MAJOR OVERHAUL: ASTRALS & ARTIFACTS)
+สรุปหัวข้อการอัปเดตสำคัญประจำเวอร์ชัน v2.1:
+* 1. ขยาย Roster ตัวละคร Day 1 สู่ 18 ตัวละคร (SSR 12 ตัว + SR 6 ตัว): ครอบคลุม 6 ทวีป, 6 ธาตุ และ 5 Combat Roles อย่างสมบูรณ์ เพื่อป้องกันปัญหาเมตาทีมตายตัว
+* 2. ระบบกาชา Wishlist 5 ตัวละคร (Full Squad Wishlist): ล็อกเรท 5 ตัวละครที่ต้องการในตู้ถาวร (แชร์เรท SSR 70%) ตรงกับขนาดปาร์ตี้ 5 คน
+* 3. ระบบร้านค้าไมล์เรจแห่งดวงดาว (Starfall Exchange Shop): สุ่มกาชาทุก 1 โรลรับ 1 Starfall Shard (เหรียญไม่มีวันหมดอายุ สะสมข้ามตู้ได้) แลกอาวุธประจำตัว 5 ดาว (80 Shards), เศษตัวละครลิมิเต็ดหน้าตู้ (100 Shards) และเศษ SSR ตู้ถาวรหมุนเวียนสัปดาห์ละ 3 ตัว
+* 4. ขยายช่องอุปกรณ์เป็น 5 ช่อง (Weapon, Armor, Ring I, Ring II, Core Sigil):
+   * แหวน 2 วง (Ring I & Ring II) ใช้พูลค่าหลักเดียวกันทั้งหมด (Shared Universal Pool) เปิดโอกาสให้ผู้เล่น Stack ค่าสเตตัสเดียวกันได้ 2 วงอย่างอิสระ (เช่น Double ATK% หรือ Double Crit)
+   * Core Sigil (ศิลากำเนิดแกนพลัง) กลายเป็นชิ้นพิเศษเอกเทศ ไม่ผูกกับเซ็ตโบนัส ได้จากบอส Spire และเรดกิลด์ มี Main Stat ระดับสูง และพาสซีฟพิเศษเฉพาะตัว (Sigil Core Trait) 1 บรรทัด
+   * Substats 4 แถว สุ่มได้ทุกสเตตัสในเกม 100% พร้อมระบบ RNG Range (Min-Max Roll) รองรับสาย Min-Max ขั้นสุด
+* 5. ดันเจี้ยนอุปกรณ์ (3 โดเมน) และดันเจี้ยนทองคำ: ใช้ระบบกุญแจรายสัปดาห์ (Weekly Keys เช่น 15-20 ดอกต่อสัปดาห์ รีเซ็ตทุกวันจันทร์) ลดปัญหา FOMO พร้อมระบบกวาดล้างทันที (Sweep)
+* 6. ระบบปฏิกิริยาธาตุครบวงจร (Complete Elemental Matrix): เพิ่มปฏิกิริยาใหม่ให้ครบทุกคู่ธาตุ (Overload Plasma, Blizzard, Thunder Gale, Radiant Infusion, Abyssal Decay) นอกเหนือจาก 4 คู่เดิม
+* 7. ยกเครื่องระบบ CHRONO REWIND สู่ "ผังกลุ่มดาวแห่งกาลเวลา (4 Grand Constellations - 40 Nodes)":
+   * 4 กลุ่มดาวหลัก: มังกรดารา (โจมตี/คริ), ปราการไททัน (ป้องกัน/โล่), จักรวาลธาตุ (เจาะเกราะ/สถานะ), นาฬิกาทรายนิรันดร์ (ฟาร์ม/เกจไม้ตาย)
+   * แต่ละกลุ่มดาวมี 7 Minor Stars (เกลี่ยสเตตัสผสมผสาน ไม่สุดโต่งด้านเดียว) + 2 Major Stars + 1 Keystone Core (พาสซีฟเปลี่ยนเมตาประจำกลุ่มดาว)
+* 8. ระบบกิลด์ & ดันเจี้ยนกิลด์เรดบอส (Guild Raid): สู้กับบอสเทพบรรพกาลตัวยักษ์เลือดไม่จำกัดในเวลา 90 วินาที วันละ 3 ครั้ง เพื่อสะสมคะแนนกิลด์และรับเหรียญแลก Core Sigil
+* 9. ระบบอารีน่า 1v1 อัตโนมัติ (Asynchronous PvP): จัดทีมตั้งรับ (Defense Team) และท้าดวลทีมผู้เล่นอื่นด้วยระบบ Gambit AI + แผนการยืน 5 คน
+* 10. ระบบจัดทัพก่อนสู้ (Pre-Battle Deployment Screen) & ล็อกผังการรบ: ลากวางตำแหน่งตัวละคร (Drag & Drop) และเลือก 1 ใน 4 แผนรบก่อนกดเริ่มสู้ ป้องกันการเปลี่ยนผังรบระหว่างต่อสู้เพื่อความยุติธรรม
+* 11. มาตรฐานชื่อและเอฟเฟกต์ไพ่พร Roguelite อิง Major Arcana 22 ใบ (Public Domain 100%): ปลอดภัยไร้ปัญหาลิขสิทธิ์
+MODULE 1: WORLD LORE, 6 CONTINENTS & 18 DAY-1 CHARACTER ROSTER
+1.1 โครงสร้างโลก 6 ทวีป และหอคอย Chrono Spire
+หอคอย Chrono Spire ตั้งตระหง่านอยู่ใจกลางพิภพ เพื่อทำหน้าที่เป็นเสาค้ำจุนมิติและสะกด เทพบรรพกาล (The Old Gods) เมื่อผนึกโบราณแตกร้าว พลังกัดกร่อนจิตใจ (Mental Corruption) ได้ดูดกลืนอารยธรรมและพื้นที่ของทั้ง 6 ทวีปเข้ามาซ้อนทับกันกลายเป็นชั้นของหอคอย เหล่านักรบต้องอาศัยพลัง Chrono Rewind (ย้อนเวลากลุ่มดาว) เพื่อฟื้นคืนพลังกลับมาไต่หอคอยใหม่
+1.2 ผังตัวละครเปิดตัว Day 1 ทั้ง 18 ตัวละคร (SSR 12 ตัว + SR 6 ตัว)
+* รหัส
+	ชื่อตัวละคร
+	Rarity
+	ธาตุ
+	ทวีปสังกัด (Region)
+	บทบาท (Role)
+	ตำแหน่งแนะนำ
+	จุดเด่นเชิงกลยุทธ์
+	H01
+	Kallen Vermillion
+	SSR
+	🔥 Fire
+	ทวีปกลาง (Central Imperium)
+	Melee DPS
+	แถวหน้า
+	กวาดแถวหน้า 2 เป้า, ลด DEF บอส 15%, จุดชนวน Meltdown
+	H02
+	Ignis Vance
+	SSR
+	🔥 Fire
+	ทวีปเครื่องจักร (Techno-Savant)
+	Ranged DPS
+	แถวหลัง
+	ปืนใหญ่เพลิงกวาด AoE ทั้งสนาม แปะ Burn สะสม
+	H03
+	Pyra
+	SR
+	🔥 Fire
+	ทวีปป่า (Verdant Wilds)
+	Tank / Frontline
+	แถวหน้า
+	แทงค์สายไฟ สะท้อนดาเมจและแปะ Burn เมื่อถูกโจมตี
+	H04
+	Caelum Vance
+	SSR
+	⚡ Electro
+	ทวีปเครื่องจักร (Techno-Savant)
+	Tank / Breaker
+	แถวหน้า
+	เจาะเกราะบอส 120 BP ในฮิตเดียว, ยั่วยุ, กางโล่แม่เหล็ก
+	H05
+	Raiden Thorne
+	SSR
+	⚡ Electro
+	ทวีปกลาง (Central Imperium)
+	Ranged DPS
+	แถวหลัง
+	สายฟ้าชิ่งหลายเป้าหมาย, เร่งความเร็วโจมตี SPD ตัวเอง
+	H06
+	Sparky
+	SR
+	⚡ Electro
+	ทวีปเครื่องจักร (Techno-Savant)
+	Debuffer
+	แถวหลัง
+	สกิลActiveแปะ Shock 100% เร่งให้เพื่อนทำ Superconduct
+	H07
+	Yuzuki Hoshino
+	SSR
+	❄️ Cryo
+	ทวีปน้ำแข็ง (Frostbound Tundra)
+	Debuffer
+	แถวหลัง
+	แช่แข็งหมู่ 2.0s, ลด Effect RES ศัตรูทั้งสนาม 25%
+	H08
+	Freya Wintergard
+	SSR
+	❄️ Cryo
+	ทวีปน้ำแข็ง (Frostbound Tundra)
+	Melee DPS
+	แถวหน้า
+	ดาบน้ำแข็งฟันประชิด ตีเป้าหมายติด Freeze แรงขึ้น +50%
+	H09
+	Frostguard Olin
+	SR
+	❄️ Cryo
+	ทวีปน้ำแข็ง (Frostbound Tundra)
+	Tank / Frontline
+	แถวหน้า
+	กางบาเรียเกล็ดหิมะรับดาเมจแทนเพื่อนแถวหลัง
+	H10
+	Kahori Amakusa
+	SSR
+	🌪️ Wind
+	ทวีปป่า (Verdant Wilds)
+	Melee DPS
+	แถวหน้า/หลัง
+	SPD สูงสุดในเกม, ล้วงศัตรูตัวหลังสุด, ระเบิด Bleed 5 ชั้น
+	H11
+	Zephyr Gale
+	SSR
+	🌪️ Wind
+	ทวีปป่า (Verdant Wilds)
+	Ranged DPS
+	แถวหลัง
+	ธนูพายุลมยิงทะลวงแถวหน้าไปถึงหลัง, ลด ATK ศัตรู
+	H12
+	Gale Swift
+	SR
+	🌪️ Wind
+	ทวีปป่า (Verdant Wilds)
+	Support
+	แถวหลัง
+	บัฟเพิ่มความเร็ว SPD และ Break Power ให้ทั้งทีม
+	H13
+	Aurelia Solis
+	SSR
+	☀️ Light
+	ทวีปแสง (Aetherial Sanctuary)
+	Support & Healer
+	แถวหลัง
+	ฮีลกู้วิกฤตทั้งทีม, กางโล่ 20% Max HP, กันเพื่อนตายที่ 5 ดาว
+	H14
+	Solarius Vance
+	SSR
+	☀️ Light
+	ทวีปแสง (Aetherial Sanctuary)
+	Tank / Paladin
+	แถวหน้า
+	อัศวินแสงกางบาเรียดูดซับดาเมจเปลี่ยนเป็นฮีลทั้งทีม
+	H15
+	Lumina
+	SR
+	☀️ Light
+	ทวีปแสง (Aetherial Sanctuary)
+	Ranged DPS
+	แถวหลัง
+	ยิงศรแสงแปะ Luminous Mark และเพิ่ม Crit Rate ให้เพื่อน
+	H16
+	Noctis Ravenlock
+	SR
+	🌑 Dark
+	ทวีปมืด (Abyssal Shadowlands)
+	Ranged DPS
+	แถวหลัง
+	ปาเคียวเงาเก็บตกเป้าเลือดน้อยสุด, ท่าไม้ตายเดี่ยว 1,050%
+	H17
+	Malakor the Fallen
+	SSR
+	🌑 Dark
+	ทวีปมืด (Abyssal Shadowlands)
+	Melee Berserker
+	แถวหน้า
+	ยิ่งเลือดเหลือน้อยยิ่งตีแรง, ทำ True DMG เมื่อเลือดต่ำ
+	H18
+	Vespera Shadowveil
+	SSR
+	🌑 Dark
+	ทวีปมืด (Abyssal Shadowlands)
+	Debuffer
+	แถวหลัง
+	ร่ายอาณาเขตมืด กัดกร่อนเกราะและลดดาเมจบอสลง 20%
+	1.3 ตารางสเตตัสพื้นฐาน (8 Core + 3 Secondary Attributes) & สเกลการอัปดาว (2★ ➔ 5★)
+8 Core Attributes + 3 Secondary Attributes:
+* 1. Max HP: พลังชีวิตสูงสุด
+* 2. ATK: พลังโจมตีพื้นฐาน (คำนวณดาเมจสกิลและฮีล)
+* 3. DEF: ลดความเสียหายตามสูตร RawDmg * (100 / (100 + DEF))
+* 4. SPD: ความเร็วออกท่าโจมตีปกติ (Interval = 115 / SPD วินาที)
+* 5. Crit Rate%: โอกาสติดคริติคอล (พื้นฐาน 15%)
+* 6. Crit DMG%: ความแรงคริติคอล (พื้นฐาน 150%)
+* 7. Break Power%: ประสิทธิภาพทุบเกราะ Boss Stagger (พื้นฐาน 100%)
+* 8. Energy Charge%: อัตราฟื้นฟูเกจ Ultimate (พื้นฐาน 100%)
+* 9. Effect Hit Rate%: โอกาสแปะสถานะผิดปกติสำเร็จ (พื้นฐาน 0%)
+* 10. Effect RES%: โอกาสต้านทานสถานะผิดปกติ (พื้นฐาน 0%)
+* 11. Healing Bonus%: ประสิทธิภาพการฟื้นฟูและกางโล่ (พื้นฐาน 0%)
+ระบบอัปดาวด้วยเศษตัวซ้ำ (Duplicate Shards: SSR ซ้ำ = +50 Shards, SR ซ้ำ = +30 Shards):
+* 2★ (SR เริ่มต้น): Lv. ตัน 40 | สกิลตัน Lv. 2 | Passive Tier 1 | สเตตัส 85%
+* 3★ (SSR เริ่มต้น / อัปจาก 2★ ใช้ 30 Shards): Lv. ตัน 60 | สกิลตัน Lv. 4 | Passive Tier 1 | สเตตัส 100%
+* 4★ (ใช้ 50 Shards): Lv. ตัน 80 | สกิลตัน Lv. 7 | Passive Tier 2 | สเตตัส +20%
+* 5★ MAX (ใช้ 100 Shards): Lv. ตัน 100 | สกิลตัน Lv. 10 | Passive Tier 3 | สเตตัส +45% + โบนัส 5★ เฉพาะตัว
+1.4 ตารางสกิลและตัวคูณมาตรฐาน (4+1 Skill Kit Scaling Lv.1 ➔ Lv.10)
+* Basic Attack: ตัวคูณ 100% ➔ 145% ATK | Break 15 BP | เติมเกจ Ultimate +4% | โอกาสติดสถานะพื้นฐาน 10% (ยกเว้น Freeze ที่ไม่ติดจากการตีปกติ)
+* Active Skill (CD 7.0s): ตัวคูณ 220% ➔ 340% ATK | Break 40 BP | สถานะทั่วไป (Burn, Shock, Bleed, Luminous Mark, Corrosion): 35% (Lv.1) ➔ 41% (Lv.4) ➔ 47% (Lv.7) ➔ ตันที่ 55% (Lv.10 MAX) | สถานะหยุด (Freeze): 25% (Lv.1) ➔ ตันที่ 40% (Lv.10 MAX)
+* Tactical Chain Skill (Gambit Slot 1 & 2, CD 8s): ตัวคูณ 320% ➔ 480% ATK | Break 60 BP (สาย Breaker สูงถึง 120 BP) | จุดชนวน Elemental Reaction
+* Ultimate Skill (Energy 100%): ตัวคูณหมู่ 580% ➔ 850% ATK (เป้าเดี่ยวสูงถึง 1,050% ATK) | Break 150 BP | โอกาสแปะสถานะ 65% (Lv.1) ➔ ตันที่ 80% (Lv.10 MAX)
+MODULE 2: GACHA WISHLIST & STARFALL EXCHANGE MILEAGE SHOP
+2.1 ระบบ Wishlist ตู้ถาวร 5 ตัวละคร (Full Squad Wishlist)
+* ผู้เล่นสามารถเลือกใส่ตัวละครระดับ SSR ที่ต้องการได้ 5 ตัวละคร ในหน้าตู้กาชาถาวร
+* เมื่อสุ่มได้ตัวละครระดับ SSR ตัวเกมจะ ล็อกโอกาส 70% ให้ตกอยู่ใน 5 ตัวละครใน Wishlist (หารเฉลี่ยตัวละ 14%) และมีโอกาสเพียง 30% ที่จะสุ่มได้ SSR นอก Wishlist
+2.2 ระบบร้านค้าไมล์เรจแห่งดวงดาว (Starfall Exchange Shop)
+* ทุกๆ การเปิดกาชาในตู้ตัวละคร 1 โรล = ได้รับ `1 Starfall Shard` เสมอ
+* กฎเหล็ก: เหรียญ Starfall Shards ไม่มีวันหมดอายุ สามารถสะสมข้ามตู้และข้ามแพตช์ได้อิสระ
+* รายการสินค้าในร้านค้า Starfall Exchange:
+   * 1. อาวุธประจำตัว 5 ดาวของตัวลิมิเต็ดหน้าตู้: ใช้ 80 Shards (การันตีรับอาวุธตรงสายทันทีเมื่อเปิดตัวละครถึงการันตี 80 โรล)
+   * 2. เศษตัวละครลิมิเต็ดหน้าตู้ (จำนวน 50 Shards เทียบเท่าได้ตัวซ้ำ 1 ตัว): ใช้ 100 Shards (จำกัด 1-2 ครั้งต่อรอบตู้)
+   * 3. ร้านเศษ SSR ตู้ถาวรหมุนเวียนรายสัปดาห์ (3 ตัวละคร สลับทุกวันจันทร์): ใช้ 75 Shards แลกตัวเต็ม (50 เศษ) หรือ 40 Shards แลกครึ่งตัว (25 เศษ)
+   * 4. หินล้างสเตตัสอุปกรณ์ (Reforge Stone): ใช้ 15 Shards
+   * 5. ผงดาราเร่งตีบวก (Fail Stack Catalyst +10%): ใช้ 10 Shards
+MODULE 3: 5-SLOT EQUIPMENT, UNIVERSAL RINGS, EXOTIC SIGIL & FAIL STACK
+3.1 โครงสร้างอุปกรณ์ 5 ช่อง
+* ช่องที่ 1: Weapon (อาวุธ): ค่าหลักตายตัว `Flat ATK`
+* ช่องที่ 2: Armor (ชุดเกราะ): ค่าหลักตายตัว `Flat HP + Flat DEF`
+* ช่องที่ 3: Ring I (แหวนวงที่ 1): สุ่มค่าหลักใน Universal Ring Pool
+* ช่องที่ 4: Ring II (แหวนวงที่ 2): สุ่มค่าหลักใน Universal Ring Pool เดียวกัน 100%
+* ช่องที่ 5: Core Sigil (ศิลากำเนิดแกนพลัง - ชิ้นพิเศษ): ชิ้นเอกเทศ ไม่นับโบนัสเซ็ต
+Universal Ring Pool (พูลสเตตัสหลักของแหวนทั้ง 2 วง):
+ผู้เล่นสามารถใส่แหวนที่ได้สเตตัสเดียวกันทั้ง 2 วงเพื่อทำการ Double Stack ได้อย่างอิสระ:
+* `ATK%` (สุ่มได้ทั้ง 2 วง)
+* `Crit Rate%` (สุ่มได้ทั้ง 2 วง)
+* `Crit DMG%` (สุ่มได้ทั้ง 2 วง)
+* `Max HP%` (สุ่มได้ทั้ง 2 วง)
+* `DEF%` (สุ่มได้ทั้ง 2 วง)
+* `Break Power%` (สุ่มได้ทั้ง 2 วง)
+* `Effect Hit Rate%` (สุ่มได้ทั้ง 2 วง)
+* `Healing Bonus%` (สุ่มได้ทั้ง 2 วง)
+* `Flat ATK` / `Flat HP`
+ความพิเศษของ Core Sigil (Exotic Artifact):
+* ได้รับจากการปราบบอสประจำชั้นสูงใน Spire, ร้านค้ากิลด์เรด หรือการหลอมขั้นสูง
+* Main Stat ระดับสูง: สุ่มได้เฉพาะค่าทรงพลัง เช่น `Energy Charge%`, `SPD`, `Break Power%`, หรือ `All-Element DMG%`
+* Sigil Core Trait: มีพาสซีฟพิเศษเฉพาะตัวของตรานั้น 1 บรรทัด (เช่น เมื่อเริ่มการต่อสู้ ได้รับ SPD +15 นาน 6 วินาที หรือเมื่อทุบเกราะแตก ฮีลทั้งทีม 10% HP)
+3.2 กฎ Substats 4 แถว และระบบ RNG Range (Min-Max Roll)
+อุปกรณ์ทุกชิ้นมี Substat ได้สูงสุด 4 แถว สุ่มได้ทุกสเตตัสในเกม 100% โดยแต่ละแถวจะมีช่วงตัวเลขสุ่ม (RNG Range):
+* `Crit Rate%`: สุ่มได้ระหว่าง +2.5% ถึง +3.8% ต่อโรล
+* `Crit DMG%`: สุ่มได้ระหว่าง +5.0% ถึง +7.6% ต่อโรล
+* `SPD`: สุ่มได้ระหว่าง +2 ถึง +4 ต่อโรล
+* `ATK% / HP% / DEF%`: สุ่มได้ระหว่าง +3.5% ถึง +5.5% ต่อโรล
+* `Break Power% / Effect Hit%`: สุ่มได้ระหว่าง +4.0% ถึง +6.0% ต่อโรล
+* `Flat ATK / Flat HP / Flat DEF`: สุ่มตามเกรดความหายากของอุปกรณ์
+3.3 ระบบตีบวกแยกชิ้น (+0 ถึง +15) และระบบสะสมโบนัส Fail Stack
+* อุปกรณ์ไม่มีวันแตกและไม่ลดระดับขั้นเมื่อตีบวกพลาด
+* สะสมโบนัสโอกาสติด (Fail Stack) เพิ่มขึ้นทุกครั้งที่พลาด และคงอยู่ถาวรจนกว่าจะตีติดขึ้นขั้นใหม่สำเร็จ
+* ทุกๆ ขั้น +3, +6, +9, +12, +15 จะสุ่มปลดล็อกหรืออัปเกรด Substat
+ขั้นตีบวก
+	โอกาสติดพื้นฐาน
+	Fail Stack ต่อการพลาด 1 ครั้ง
+	การันตีติด 100%
+	ตัวคูณค่าพลังหลักสะสม
+	โบนัส Substat
+	+1 ถึง +3
+	100%
+	— (ติดชัวร์ 100%)
+	1 ครั้ง
+	+10% ถึง +30%
+	ที่ +3: เปิด Substat แถวที่ 1
+	+4 ถึง +6
+	75%
+	+12.5% ต่อครั้ง
+	ไม่เกิน 3 ครั้ง
+	+45% ถึง +75%
+	ที่ +6: เปิด Substat แถวที่ 2
+	+7 ถึง +9
+	50%
+	+12.5% ต่อครั้ง
+	ไม่เกิน 5 ครั้ง
+	+95% ถึง +135%
+	ที่ +9: เปิด Substat แถวที่ 3
+	+10 ถึง +12
+	30%
+	+10.0% ต่อครั้ง
+	ไม่เกิน 8 ครั้ง
+	+160% ถึง +210%
+	ที่ +12: เปิด Substat แถวที่ 4
+	+13 ถึง +15
+	15%
+	+8.5% ต่อครั้ง
+	ไม่เกิน 11 ครั้ง
+	+245% ถึง +300% (4x)
+	ที่ +15: Masterwork Substat Roll
+	3.4 ดันเจี้ยนอุปกรณ์ (Gear Domains) & ดันเจี้ยนทองคำ
+* ระบบกุญแจรายสัปดาห์ (Weekly Keys): ผู้เล่นได้รับกุญแจฟาร์มดันเจี้ยนละ 15 ดอกต่อสัปดาห์ (รีเซ็ตทุกวันจันทร์เวลา 04:00 น.) เล่นเวลาใดก็ได้ในสัปดาห์ ไม่บังคับเล่นทุกวัน
+* ระบบกวาดล้างทันที (Sweep): ผ่านด่านระดับ 3 ดาวครั้งเดียว สามารถกดกวาดล้างเพื่อรับของรางวัลได้ทันที
+* 3 โดเมนอุปกรณ์:
+   * Domain I (Striker): ดรอปเซ็ต Starfall Executioner, Volatus, Overload
+   * Domain II (Defender): ดรอปเซ็ต Titan, Radiant Dawn
+   * Domain III (Tactician): ดรอปเซ็ต Eclipse, Astral Nexus, Voidweaver
+3.5 ตารางโบนัสอุปกรณ์ครบทั้ง 8 เซ็ต (8 Canonical Equipment Sets — 2-PC & 4-PC Bonuses)
+ชื่อเซ็ตอุปกรณ์ (Set Name)
+	โดเมนที่ดรอป
+	สายที่แนะนำ
+	โบนัส 2 ชิ้น (2-PC Bonus)
+	โบนัส 4 ชิ้น (4-PC Bonus)
+	รายชื่อชิ้นส่วน (Weapon / Armor / Ring I / Ring II)
+	1. Starfall Executioner
+	Domain I (Striker)
+	Melee / Ranged Crit DPS
+	Crit Rate +15%
+	Crit DMG +35% และคริติคอลทะลุ DEF ศัตรู 15%
+	Starfall Blade / Cuirass / Signet I / Signet II
+	2. Astral Nexus
+	Domain III (Tactician)
+	Gambit Chain Combo
+	Tactical Chain DMG +25%
+	เมื่อใช้ Tactical Chain Skill เพิ่ม ATK ทั้งทีม +15% นาน 4.0s
+	Astral Wand / Robe / Band I / Band II
+	3. Eclipse
+	Domain III (Tactician)
+	Breaker / Burst DPS
+	Break Power +25%
+	ขณะบอสติด Staggered ท่า Ultimate ทำ Crit DMG แรงขึ้น +60%
+	Eclipse Halberd / Plate / Ring I / Ring II
+	4. Overload
+	Domain I (Striker)
+	Ultimate Spammer
+	Energy Charge +20%
+	เมื่อกดใช้ Ultimate คืนเกจพลังงานกลับทันที 25%
+	Overload Cannon / Suit / Coil I / Coil II
+	5. Titan
+	Domain II (Defender)
+	Frontline Tank
+	Max HP +20%
+	เริ่มเวฟกางโล่ 20% Max HP และลดดาเมจที่ได้รับลง 15%
+	Titan Greatshield / Bastion / Seal I / Seal II
+	6. Volatus
+	Domain I (Striker)
+	High-SPD Assassin
+	SPD +12%
+	โจมตีปกติครบทุก 3 ครั้ง ยิงคลื่นลมทำ True DMG 80% ATK
+	Volatus Katana / Garb / Crest I / Crest II
+	7. Radiant Dawn
+	Domain II (Defender)
+	Healer & Support
+	Healing Bonus +25%
+	ฮีลล้นหลอดกลายเป็นโล่ป้องกัน และเพิ่ม ATK เป้าหมายที่ได้รับการฮีล +15% นาน 4.0s
+	Radiant Bow / Vestment / Halo I / Halo II
+	8. Omen (Voidweaver)
+	Domain III (Tactician)
+	Debuffer & Reaction
+	Status Chance / Effect Hit Rate +20%
+	เพิ่มความแรงปฏิกิริยาธาตุและ DoT +40% และทะลุโล่บอส
+	Void Scythe / Shroud / Eye I / Eye II
+	3.6 รายชื่อ Core Sigil ระดับ Exotic (5 ช่องที่ 5 — ไม่ผูกเซ็ต)
+* Exotic Chrono Sprint Sigil: Main Break Power% +19.5% | Trait: เริ่มการต่อสู้ได้รับ SPD +15 นาน 6.0s
+* Exotic Aetherial Heart Sigil: Main Energy Charge% +24.0% | Trait: เมื่อทุบเกราะบอสแตก (Staggered) ฮีลทั้งทีม 10% Max HP ทันที
+* Exotic Cataclysmic Core Sigil: Main All-Element DMG% +18.0% | Trait: ปฏิกิริยาธาตุมีโอกาสคริติคอลเพิ่มขึ้น +20%
+* Exotic Immortal Bulwark Sigil: Main SPD +14 | Trait: เมื่อแถวหน้าเลือดต่ำกว่า 30% กางโล่ฉุกเฉิน 25% Max HP (CD 20s)
+MODULE 4: COMPLETE ELEMENTAL REACTIONS MATRIX (ทุกคู่ธาตุ)
+4.1 ตารางปฏิกิริยาธาตุครบทุกคู่ (Elemental Reaction Matrix)
+ทันทีที่เกิดปฏิกิริยาธาตุ สถานะตั้งต้นบนตัวบอสจะถูกล้างออกทันที:
+คู่ธาตุที่ผสม
+	ชื่อปฏิกิริยาธาตุ (Reaction Name)
+	เอฟเฟกต์ของการระเบิดปฏิกิริยาธาตุ
+	Cryo ➔ Fire
+	MELTDOWN
+	ระเบิดดาเมจ 1.8x (คิดโอกาสคริจริง) และแปะ Defenseless (ลด DEF บอสลงอีก 25% นาน 4.0s)
+	Electro ➔ Cryo
+	SUPERCONDUCT
+	ทำดาเมจเกราะพิเศษ +80 BP ทันที และแปะ Conductive (เพิ่ม Break Power ทั้งทีม +35% นาน 4.0s)
+	Fire ➔ Wind
+	FIRESTORM
+	พายุคมลมโหมไฟ 3 ฮิต กระจายสถานะ Burn + Bleed และฟื้นฟูเกจ ULTIMATE +10 หน่วยให้ทั้งทีม
+	Fire ➔ Electro
+	OVERLOAD PLASMA
+	ระเบิดพลาสมาขัดจังหวะการร่ายสกิลของศัตรูทันที และทำดาเมจไฟฟ้า AoE 220% ATK
+	Cryo ➔ Wind
+	BLIZZARD
+	แช่แข็งเป้าหมายเร็วขึ้น 1.5 เท่า และลดความเร็วในการโจมตี (SPD) ของศัตรูลง 30% นาน 4.0s
+	Electro ➔ Wind
+	THUNDER GALE
+	ปล่อยคลื่นสายฟ้าชิ่งใส่ศัตรูทุกตัวในสนาม ความแรงเพิ่มขึ้นตามจำนวนชั้น Bleed ที่มี (ฮิตละ +15%)
+	Light ➔ Dark
+	TWILIGHT EXECUTION
+	ความเสียหายทะลุเกราะ Ignore DEF 40% ในช่วงปกติ และกลายเป็น 100% True DMG เมื่อเลือดบอสต่ำกว่า 25%
+	Light ➔ 4 ธาตุหลัก
+	RADIANT INFUSION
+	ชำระล้างสถานะผิดปกติของเพื่อน 1 คน และเปลี่ยนสถานะธาตุบนตัวบอสเป็นการฟื้นฟูเลือดทั้งทีม 8% HP
+	Dark ➔ 4 ธาตุหลัก
+	ABYSSAL DECAY
+	กัดกร่อนสถานะผิดปกติเดิม ทำให้ระยะเวลาแสดงผลของสถานะนั้นยาวนานขึ้นอีก +2.0 วินาที
+	4.2 กฎระยะเวลาสถานะ (Duration), โอกาสติดสถานะ (Proc Chance) & การเชื่อมกับระบบ Gear
+* ก. ระยะเวลาคงอยู่ของสถานะ (Status Duration):
+   * 1. สถานะทั่วไป (Burn, Shock, Bleed, Luminous Mark, Corrosion): อยู่นาน 4.0 วินาที (สั้นกว่าคูลดาวน์สกิล Active ที่ 7.0 วินาที เพื่อให้มีช่วงเวลาที่บอสหลุดจากสถานะเสมอ ไม่สามารถแปะแช่ถาวรได้)
+   * 2. สถานะหยุด (Freeze): อยู่นาน 2.0 วินาที และหลังจากบอสหลุดแช่แข็ง จะมีบัฟต้านทานการถูกแช่แข็งซ้ำ (Freeze Immunity) นาน 8.0 วินาที
+* ข. กฎการล้างสถานะเมื่อเกิดปฏิกิริยา (Consume Status on Reaction):
+   * ทันทีที่เพื่อนร่วมทีมพุ่งเข้ามาใช้สกิล Gambit จุดชนวนปฏิกิริยาธาตุสำเร็จ สถานะตั้งต้นบนตัวบอสจะถูกใช้และหายไปทันที เพื่อป้องกันไม่ให้ตัวละครอื่นในทีมรุมกดปฏิกิริยาซ้ำจากสถานะเดิมฟรีๆ
+* ค. เพดานโอกาสติดสถานะ (Proc Chance): สกิลให้สูงสุด 55% + ที่เหลืออีก 45% ต้องปั้นจาก Gear:
+   * สูตรคำนวณโอกาสติดจริง: `Total Proc Chance = Base Skill Chance + Gear Status Chance Bonus`
+   * 1. โอกาสติดสถานะจากตัวสกิลเพียวๆ (เมื่อยังไม่ใส่ Gear เสริมสถานะ):
+      1. `Basic Attack (ตีปกติ)`: โอกาสติดพื้นฐาน 10% (ไม่รวม Freeze ที่ไม่ติดจากการตีปกติ)
+      2. `Active Skill (สกิลอัตโนมัติ)`: สถานะทั่วไป เริ่มต้นที่ 35% (Lv.1) ➔ 41% (Lv.4) ➔ 47% (Lv.7) ➔ ตันที่ 55% (Lv.10 MAX) | สถานะหยุด (`Freeze`): เริ่มต้นที่ 25% (Lv.1) ➔ ตันที่ 40% (Lv.10 MAX)
+      3. `ท่าไม้ตาย (ULTIMATE)`: เริ่มต้นที่ 65% (Lv.1) ➔ ตันที่ 80% (Lv.10 MAX)
+   * 2. การปั้นโอกาสติดสถานะส่วนที่เหลืออีก +45% จากระบบ Gear (Equipment & Set Bonus):
+      1. ช่อง `Ring I / Ring II / Core Sigil`: สุ่มหรือเลือกค่าพลัง `Status Chance (Effect Hit Rate)` +15% ถึง +25%
+      2. โบนัสเซ็ตอุปกรณ์สายสถานะ (`[2-PC Omen / Voidweaver Set]`): เพิ่ม `Status Chance` +20% (และใส่ครบ `[4-PC]` จะเพิ่มความแรงปฏิกิริยาธาตุอีก +40%)
+   * สรุปตัวเลขเมื่อปั้นสุดสาย: สกิล Lv.10 (55%) + อุปกรณ์ Ring/Sigil (+25%) + เซ็ต 2 ชิ้น (+20%) = ติดสถานะ 100% เต็ม
+MODULE 5: CHRONO REWIND — 4 GRAND CONSTELLATIONS (40 NODES)
+เมื่อกดย้อนเวลาจุติ (Chrono Rewind) จะได้รับ Time Shards นำมาอัปเกรดผังกลุ่มดาว 4 กลุ่มใหญ่ รวม 40 Nodes (กลุ่มละ 10 Nodes ประกอบด้วย 7 Minor Stars แบบผสมผสาน + 2 Major Stars + 1 Keystone Core):
+1. กลุ่มดาวมังกรดารา (The Star Dragon — พลังทำลายล้าง & คริติคอล)
+* 7 Minor Stars (ผสมผสาน):
+   * Node 1: ATK +3% / Max HP +1.5%
+   * Node 2: Flat ATK +45 / DEF +2%
+   * Node 3: Crit DMG +6% / Max HP +2%
+   * Node 4: ATK +4% / SPD +3
+   * Node 5: Flat HP +500 / Crit Rate +1.5%
+   * Node 6: Crit DMG +8% / DEF +3%
+   * Node 7: ATK +5% / Break Power +4%
+* 2 Major Stars:
+   * Node 8 (Eye of the Dragon): Crit Rate +5% & Crit DMG +15%
+   * Node 9 (Dragon Claws): การโจมตีคริติคอลทะลุ DEF บอส 10%
+* 👑 Keystone Core: Dragon's Cataclysm — เมื่อทีมทำคริดาเมจสะสมครบ 10 ครั้ง สมาชิกทุกคนได้รับบัฟ ATK +20% นาน 6.0 วินาที
+2. กลุ่มดาวปราการไททัน (The Titan Bastion — ความถึก โล่ & การต้านทาน)
+* 7 Minor Stars (ผสมผสาน):
+   * Node 1: Max HP +4% / Flat DEF +30
+   * Node 2: DEF +4% / ATK +2%
+   * Node 3: Healing Bonus +4% / Max HP +2%
+   * Node 4: Effect RES +5% / Flat HP +400
+   * Node 5: Break Power +5% / DEF +3%
+   * Node 6: Max HP +5% / SPD +2
+   * Node 7: DEF +5% / Effect RES +4%
+* 2 Major Stars:
+   * Node 8 (Titan Aegis): เพิ่มความหนาของโล่ทุกชนิดที่สร้างขึ้น +25%
+   * Node 9 (Unyielding Heart): เมื่อ HP ต่ำกว่า 30% ลดดาเมจที่ได้รับลง 15%
+* 👑 Keystone Core: Titan's Bulwark — เมื่อเริ่มการต่อสู้ในทุกชั้น สมาชิกแถวหน้าทุกคนได้รับโล่ป้องกัน 15% Max HP นาน 8.0 วินาที
+3. กลุ่มดาวจักรวาลธาตุ (The Astral Nexus — เจาะเกราะ & ปฏิกิริยาธาตุ)
+* 7 Minor Stars (ผสมผสาน):
+   * Node 1: Break Power +5% / Flat ATK +35
+   * Node 2: Effect Hit Rate +4% / Max HP +2%
+   * Node 3: Tactical Chain DMG +6% / DEF +2%
+   * Node 4: Break Power +6% / Flat HP +450
+   * Node 5: ATK +3% / Effect Hit Rate +4%
+   * Node 6: Elemental Reaction DMG +8% / SPD +3
+   * Node 7: Break Power +7% / DEF +3%
+* 2 Major Stars:
+   * Node 8 (Sunder Reality): เมื่อบอสติด Staggered เวลาหมดสตินานขึ้นอีก +1.5s (รวมเป็น 7.0s)
+   * Node 9 (Elemental Catalyst): เพิ่มความเสียหายของปฏิกิริยาธาตุทุกชนิด +30%
+* 👑 Keystone Core: Astral Resonance — ทุกครั้งที่จุดชนวนปฏิกิริยาธาตุสำเร็จ ทุบเกราะ Stagger บอสลดลงทันที 30 BP และเติมเกจ Ultimate ให้ทั้งทีม 5%
+4. กลุ่มดาวนาฬิกาทรายนิรันดร์ (The Chronos Hourglass — เวลา ฟาร์ม AFK & สกิลไม้ตาย)
+* 7 Minor Stars (ผสมผสาน):
+   * Node 1: Energy Charge +3% / Max HP +2%
+   * Node 2: Gold Drop +6% / Flat ATK +30
+   * Node 3: Energy Charge +4% / DEF +2%
+   * Node 4: AFK Chest Loot +8% / Max HP +2%
+   * Node 5: Break Power +4% / Energy Charge +3%
+   * Node 6: EXP Drop +8% / Flat HP +400
+   * Node 7: Energy Charge +5% / ATK +3%
+* 2 Major Stars:
+   * Node 8 (Time Warp Leap): เมื่อกดย้อนเวลาจุติ เริ่มต้นไต่หอคอยที่ชั้นสูงขึ้นทันที +15 ชั้น
+   * Node 9 (Chronos Surge): เมื่อเริ่มเวฟใหม่ สมาชิกทุกคนได้รับเกจ Ultimate ตั้งต้นทันที +20%
+* 👑 Keystone Core: Eternal Chrono Loop — ตัวละครแรกที่ใช้ท่าไม้ตาย ULTIMATE ในแต่ละรอบ จะได้รับเกจคืนทันที 50%
+MODULE 6: GUILD SYSTEM, GUILD RAID & 1v1 ASYNC ARENA
+6.1 ระบบกิลด์ & ดันเจี้ยนกิลด์เรด (Guild Raid Boss)
+* สมาชิกกิลด์ร่วมมือกันต่อสู้กับบอสเทพบรรพกาลตัวยักษ์ (Infinite HP) มีเวลาต่อสู้รอบละ 90 วินาที ท้าสู้ได้วันละ 3 ครั้ง
+* คิดคะแนนตามดาเมจสะสมที่ทำได้ นำคะแนนรวมของกิลด์ไปจัดอันดับรายสัปดาห์
+* ได้รับ Guild Medals สำหรับนำไปแลก Core Sigil พิเศษ, หิน Reforge Stone และเศษตัวละครในร้านค้ากิลด์
+6.2 ระบบอารีน่า 1v1 อัตโนมัติ (Asynchronous PvP)
+* ผู้เล่นจัดทีมตั้งรับ (Defense Squad 5 คน) พร้อมตั้งค่าแผนรบและ Gambit
+* ท้าดวลกับทีมผู้เล่นอื่นแบบต่อสู้อัตโนมัติ 100% ไต่ระดับแรงก์ตั้งแต่ Bronze จนถึง Grandmaster
+* รับเหรียญ Arena Tokens สำหรับแลกอุปกรณ์ระดับท็อปและเพชรรายสัปดาห์
+6.3 หน้าจอจัดทัพก่อนสู้ (Pre-Battle Deployment) & การล็อกผังการรบ
+* หน้าต่างเตรียมความพร้อมก่อนเข้าสู่การต่อสู้ ผู้เล่นสามารถ ลากและวางตัวละคร (Drag & Drop) จัดตำแหน่งแถวหน้า/หลัง และเลือก 1 ใน 4 แผนรบ (1-4, 2-3, 3-2, 4-1)
+* กฎเหล็ก: เมื่อกดปุ่ม [เริ่มการต่อสู้] ระบบจะ ล็อกผังรบและการยืนตำแหน่งถาวร ตลอดการสู้นั้น ผู้เล่นไม่สามารถสลับผังรบกลางคันได้ เพื่อความยุติธรรมและรักษาคุณค่าเชิงกลยุทธ์
+กฎบันไดหอคอย (Spire Encounter Loop):
+* ชั้นปกติ (F1-F4, F6-F9 / floor % 5 !== 0): ปะทะสมุนความว่างเปล่า (Void Minions 2-3 ตัว เช่น Void Larva, Corrupted Sentry, Spire Imp) เลือดและ Stagger น้อยกว่าบอส 3-4 เท่า
+* ชั้นบอสใหญ่ (ทุกๆ 5 ชั้น: F5, F10, F15... / floor % 5 === 0): ปะทะบอสเทพบรรพกาล Old God Core: Azathoth's Remnant แบบแยก 4 ชิ้นส่วน พร้อมเวลานับถอยหลัง Berserk Corruption 60.0s
+ตารางโบนัสแผนการรบสมมาตร 5 คน (5-Hero Symmetrical Squad Formations Lv.1 ➔ Lv.5):
+* 1. Hyper-Carry (หน้า 4 - หลัง 1): แถวหน้า 4 คนได้รับ DEF +12% ➔ +30% | แถวหลัง 1 คนได้รับ ATK +24% ➔ +45%
+* 2. Solo Bastion (หน้า 1 - หลัง 4): แถวหน้า 1 คนได้รับ DEF +25% ➔ +50% & Taunt | แถวหลัง 4 คนได้รับ ATK +12% ➔ +30%
+* 3. Balanced (หน้า 2 - หลัง 3): แถวหน้า 2 คนได้รับ DEF +15% ➔ +32% | แถวหลัง 3 คนได้รับ ATK +15% ➔ +32%
+* 4. Vanguard (หน้า 3 - หลัง 2): แถวหน้า 3 คนได้รับ DEF +18% ➔ +35% | แถวหลัง 2 คนได้รับ ATK +18% ➔ +35%
+สเปกชิ้นส่วนบอส Old God (Multi-Part Target Tap-to-Focus & 5-Bar Stagger Gauge):
+* Old God Core (แกนกลาง): HP 100% ของชั้น | 5-Segment Stagger Gauge (180 BP) | เมื่อเกราะแตกติด STAGGERED 5.5s (รับดาเมจ +50%) หลอดเลือดเปลี่ยนจากสีแดงเป็นสีส้มทองเรืองแสง
+* Left Void Arm (แขนซ้ายปราการ): กางโล่ลดดาเมจแกนกลาง 30% หากถูกทำลายจะทุบเกราะแกนกลางลดลงทันที 60 BP
+* Right Abyssal Crusher (แขนขวาทำลายล้าง): โจมตีแถวหน้าอย่างรุนแรง หากถูกทำลายจะลด ATK บอสลง 25%
+* Cosmic Eye of Madness (ดวงตาวิปลาส): แปะสถานะผิดปกติใส่ทีม หากถูกทำลายจะเติมเกจ Ultimate ให้ทีม +30%
+MODULE 7: 22 MAJOR ARCANA TAROT BLESSINGS (PUBLIC DOMAIN 100%)
+ระบบไพ่พร Roguelite อิงชื่อและความหมายตามไพ่ 22 Major Arcana Tarot Blessings อย่างเคร่งครัด (สมบัติสาธารณะ ปลอดภัยไร้ปัญหาลิขสิทธิ์ 100% ปราศจากไพ่คำสาป ไพ่แยกเกรด Rarity หรือการรีโรลให้รกระบบ) โดยจะปรากฏให้เลือกทุกๆ 5 ชั้นทันทีที่ปราบบอสใหญ่สำเร็จ พร้อมเวลานับถอยหลังเลือกอัตโนมัติ [AUTO CARD: 6s] เพื่อความต่อเนื่องในการฟาร์ม AFK:
+* 0. The Fool: ทุกครั้งที่เริ่มชั้นใหม่ สุ่มมอบบัฟขั้นสุดยอด 1 อย่าง (+50% ATK หรือ +50% Crit หรือ +50% Break)
+* I. The Magician: เพิ่ม Effect Hit Rate ทั้งทีม +25% และความแรงปฏิกิริยาธาตุ +40%
+* II. The High Priestess: เพิ่ม Healing Bonus +30% และเพื่อนที่มีโล่จะได้รับ Energy Charge +15%
+* III. The Empress: เพิ่ม Max HP ทั้งทีม +20% และฟื้นฟูเลือด 30% ทุกครั้งที่ผ่านชั้น
+* IV. The Emperor: แถวหน้าได้รับ DEF +35% และลดดาเมจจากการถูกโจมตีหมู่ลง 20%
+* V. The Hierophant: เพิ่มประสิทธิภาพของ Gambit Slot 1 & 2 แรงขึ้น +30%
+* VI. The Lovers: เมื่อมีฮีโร่ธาตุเดียวกันอย่างน้อย 2 ตัว บัฟ Resonance จะเพิ่มขึ้นเป็น 2 เท่า
+* VII. The Chariot: เพิ่มความเร็ว SPD ทั้งทีม +20%
+* VIII. Strength: เพิ่ม Break Power ทั้งทีม +35% ทุบเกราะ Stagger หลุดเร็วขึ้น
+* IX. The Hermit: แถวหน้าได้รับโล่ป้องกัน 25% Max HP ตอนเริ่มเวฟ และสะท้อนดาเมจ 20%
+* X. Wheel of Fortune: เพิ่ม Crit Rate +15% และ Crit DMG +40%
+* XI. Justice: เมื่อบอสติดสถานะ Defenseless การโจมตีทั้งหมดจะทะลุ DEF อีก 20%
+* XII. The Hanged Man: เมื่อฮีโร่คนใดคนหนึ่งเลือดต่ำกว่า 30% ฮีโร่คนนั้นจะได้รับ ATK +50%
+* XIII. Death: ทำดาเมจเพียว (True DMG) เพิ่มขึ้น 30% ใส่ศัตรูที่เลือดต่ำกว่า 25%
+* XIV. Temperance: ยืดระยะเวลาของสถานะผิดปกติบนตัวบอสออกไปอีก +1.5 วินาที
+* XV. The Devil: เพิ่ม ATK ทั้งทีม +35% แต่ลด Max HP ทั้งทีมลง 10%
+* XVI. The Tower: เมื่อทุบเกราะ Boss Stagger แตก 1 ช่อง ทำดาเมจระเบิดใส่บอสทันที 150% Boss ATK
+* XVII. The Star: เมื่อเริ่มการต่อสู้ สมาชิกทุกคนได้รับเกจ Ultimate เริ่มต้นทันที +30%
+* XVIII. The Moon: การโจมตีทะลุแนวหน้าไปยังศัตรูแนวหลังทำดาเมจแรงขึ้น +40%
+* XIX. The Sun: เพิ่ม ATK ทั้งทีม +25% และการโจมตีปกติมีโอกาส 20% แปะสถานะ Burn
+* XX. Judgement: ขณะบอสติดสถานะ Staggered ทั้งทีมสร้างความเสียหายแรงขึ้นอีก +60%
+* XXI. The World: เมื่อใช้ท่าไม้ตาย Ultimate มีโอกาส 35% ที่จะคืนเกจพลังงานกลับทันที 50%
+MODULE 8: CLAUDE AI COMPLETE BUILD SPECIFICATION
+เมื่อต้องการให้ Claude AI นำเอกสารฉบับนี้ไปเขียนโค้ด ให้ใช้โครงสร้างไฟล์ดังนี้:
+* `src/data/resonators.js`: บรรจุข้อมูลตัวละครครบทั้ง 18 ตัว (SSR 12 + SR 6) ตามตารางใน MODULE 1.2 พร้อมสเตตัส 8+3 ค่า
+* `src/data/equipment.js`: บรรจุระบบ 5 ช่อง (Weapon, Armor, Ring I, Ring II ใช้ Universal Ring Pool, Core Sigil เป็นชิ้นพิเศษมี Sigil Core Trait), ตารางตีบวก Fail Stack และเซ็ตอุปกรณ์ 8 เซ็ต
+* `src/data/constellations.js`: บรรจุผังกลุ่มดาว 4 กลุ่ม (Dragon, Bastion, Nexus, Hourglass) รวม 40 Nodes พร้อมตารางสเตตัสผสมผสานและ Keystone Core ตาม MODULE 5
+* `src/data/tarotCards.js`: บรรจุไพ่พร Roguelite ครบทั้ง 22 ใบตาม Major Arcana
+* `src/engine/combatEngine.js`: บรรจุระบบจัดทัพก่อนสู้ (Pre-battle Lock), ลอจิกปฏิกิริยาธาตุครบทุกคู่, บอส Old Gods 3 ชิ้นส่วน และโหมด Berserk Phase 60s
+* `src/engine/gachaEngine.js`: บรรจุระบบ Wishlist 5 ตัวละคร (เรท 70%) และระบบแจกเหรียญ Starfall Shards (1 สุ่ม = 1 Shard) ผูกกับร้านค้าไมล์เรจ
+* `src/ui/views.js`: หน้าต่าง UI Frosted Dark Glass ครบทั้ง 5 แท็บหลัก รวมถึงหน้าต่างกิลด์เรด, อารีน่า 1v1 และหน้าผังกลุ่มดาว Constellations
+UI & HUD Polish Rules
+* Boss HP & Stagger Bar Placement: หลอดเลือดบอสและหลอด Stagger ต้องจัดวางกึ่งกลางขอบบนของสนามรบเสมอ (`top-2 left-1/2 -translate-x-1/2`) โดยไม่บดบังหรือซ้อนทับโมเดลตัวละครแถวหน้า
+* Status Icons Badging: สถานะผิดปกติและดีบัฟบนตัวมอนสเตอร์และบอสต้องแสดงผลเป็น SVG Icon Badges ขนาดกะทัดรัดพร้อมตัวเลขนับสแต็ก (เช่น Burn, Freeze, Shock, Bleed, Luminous Mark, Corrosion, Defenseless) แทนการแสดงข้อความยาวซ้ำซ้อน
+* Bottom Dock Navigation Bar: แถบนำทางด้านล่างประกอบด้วย 5 แท็บหลัก (1. Tower Battle, 2. Heroes & Gambit, 3. Equipment & Forge, 4. Summon, 5. Chrono Rewind) พร้อมปุ่มทางลัดเข้าสู่ Guild Raid, 1v1 Arena, Starfall Exchange Shop และ Gear/Gold Domains (Weekly Keys + Sweep)

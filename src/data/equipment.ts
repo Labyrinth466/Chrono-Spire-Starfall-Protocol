@@ -63,14 +63,14 @@ export interface UniversalRingPoolItem {
  * Allows freely stacking identical main stats across both rings (e.g., Double ATK% or Double Crit).
  */
 export const UNIVERSAL_RING_MAIN_STAT_POOL: readonly UniversalRingPoolItem[] = Object.freeze([
-  { stat: 'ATK%', statKey: 'ATK%', baseValue: 10.0 },
-  { stat: 'Crit Rate%', statKey: 'CRIT RATE%', baseValue: 8.0 },
-  { stat: 'Crit DMG%', statKey: 'CRIT DMG%', baseValue: 16.0 },
-  { stat: 'Max HP%', statKey: 'HP%', baseValue: 10.0 },
-  { stat: 'DEF%', statKey: 'DEF%', baseValue: 10.0 },
-  { stat: 'Break Power%', statKey: 'BREAK POWER%', baseValue: 12.0 },
-  { stat: 'Effect Hit Rate%', statKey: 'EFFECT HIT RATE%', baseValue: 12.0 },
-  { stat: 'Healing Bonus%', statKey: 'HEALING BONUS%', baseValue: 10.0 },
+  { stat: 'ATK%', statKey: 'ATK%', baseValue: 12.0 },
+  { stat: 'Crit Rate%', statKey: 'CRIT RATE%', baseValue: 10.0 },
+  { stat: 'Crit DMG%', statKey: 'CRIT DMG%', baseValue: 20.0 },
+  { stat: 'Max HP%', statKey: 'HP%', baseValue: 12.0 },
+  { stat: 'DEF%', statKey: 'DEF%', baseValue: 12.0 },
+  { stat: 'Break Power%', statKey: 'BREAK POWER%', baseValue: 15.0 },
+  { stat: 'Status Chance (Effect Hit%)', statKey: 'EFFECT HIT RATE%', baseValue: 25.0 },
+  { stat: 'Healing Bonus%', statKey: 'HEALING BONUS%', baseValue: 12.0 },
 ]);
 
 export interface ExoticSigilStatItem {
@@ -80,10 +80,11 @@ export interface ExoticSigilStatItem {
 }
 
 export const EXOTIC_SIGIL_MAIN_STATS: readonly ExoticSigilStatItem[] = Object.freeze([
-  { stat: 'Energy Charge%', statKey: 'ENERGY CHARGE%', baseValue: 12.0 },
-  { stat: 'SPD', statKey: 'SPD', baseValue: 7.0 },
-  { stat: 'Break Power%', statKey: 'BREAK POWER%', baseValue: 15.0 },
-  { stat: 'All-Element DMG%', statKey: 'ALL-ELEMENT DMG%', baseValue: 10.0 },
+  { stat: 'Energy Charge%', statKey: 'ENERGY CHARGE%', baseValue: 24.0 },
+  { stat: 'SPD', statKey: 'SPD', baseValue: 14.0 },
+  { stat: 'Break Power%', statKey: 'BREAK POWER%', baseValue: 19.5 },
+  { stat: 'All-Element DMG%', statKey: 'ALL-ELEMENT DMG%', baseValue: 18.0 },
+  { stat: 'Status Chance (Effect Hit%)', statKey: 'EFFECT HIT RATE%', baseValue: 25.0 },
 ]);
 
 export interface SigilCoreTraitSpec {
@@ -94,9 +95,9 @@ export interface SigilCoreTraitSpec {
 
 export const SIGIL_CORE_TRAITS: readonly SigilCoreTraitSpec[] = Object.freeze([
   { id: 'TRAIT_CHRONO_SPRINT', name: 'Chrono Sprint', desc: 'At battle start, gain +15 SPD for 6.0 seconds.' },
-  { id: 'TRAIT_AEGIS_PULSE', name: 'Aegis Pulse', desc: 'Breaking 1 Boss Stagger bar heals the entire squad for 10% Max HP.' },
-  { id: 'TRAIT_STARFALL_OVERCHARGE', name: 'Starfall Overcharge', desc: 'Triggering an Elemental Reaction grants +8% Ultimate Energy.' },
-  { id: 'TRAIT_VOID_EXECUTIONER', name: 'Void Executioner', desc: 'Deal +18% bonus DMG against enemies below 35% HP.' },
+  { id: 'TRAIT_AETHERIAL_HEART', name: 'Aetherial Heart', desc: 'When Boss is Staggered, immediately heal all allies for 10% Max HP.' },
+  { id: 'TRAIT_CATACLYSMIC_CORE', name: 'Cataclysmic Core', desc: 'Elemental Reactions gain +20% bonus Critical Hit Rate.' },
+  { id: 'TRAIT_IMMORTAL_BULWARK', name: 'Immortal Bulwark', desc: 'When frontline ally HP drops below 30%, grant a 25% Max HP Emergency Shield (20s CD).' },
 ]);
 
 export interface SubstatRngRangeSpec {
@@ -160,6 +161,7 @@ export function rollRandomSubstat(excludeKeys: StatKey[] = []): SubstatLine {
 
 export interface EquipmentSetSpec {
   id: SetId;
+  displayName?: string;
   domain: string;
   recommendedRole: string;
   twoPieceDesc: string;
@@ -170,6 +172,7 @@ export interface EquipmentSetSpec {
 export const EQUIPMENT_SETS: readonly EquipmentSetSpec[] = Object.freeze([
   {
     id: 'Starfall Executioner',
+    displayName: 'Starfall Executioner',
     domain: 'Domain I (Striker)',
     recommendedRole: 'Melee / Ranged Crit DPS',
     twoPieceDesc: 'Crit Rate +15%',
@@ -178,6 +181,7 @@ export const EQUIPMENT_SETS: readonly EquipmentSetSpec[] = Object.freeze([
   },
   {
     id: 'Astral Nexus',
+    displayName: 'Astral Nexus',
     domain: 'Domain III (Tactician)',
     recommendedRole: 'Gambit Chain Combo',
     twoPieceDesc: 'Tactical Chain Skill DMG +25%',
@@ -186,50 +190,56 @@ export const EQUIPMENT_SETS: readonly EquipmentSetSpec[] = Object.freeze([
   },
   {
     id: 'Eclipse',
+    displayName: 'Eclipse',
     domain: 'Domain III (Tactician)',
-    recommendedRole: 'Stagger Breaker & Burst',
+    recommendedRole: 'Breaker / Burst DPS',
     twoPieceDesc: 'Break Power +25%',
     fourPieceDesc: 'While Boss is Staggered, Ultimate Crit DMG +60%',
     twoPieceStat: { 'BREAK POWER%': 25 },
   },
   {
     id: 'Overload',
+    displayName: 'Overload',
     domain: 'Domain I (Striker)',
-    recommendedRole: 'Energy Battery & Ultimate',
-    twoPieceDesc: 'Energy Charge +10%',
-    fourPieceDesc: 'Ultimate Skill DMG +40%',
-    twoPieceStat: { 'ENERGY CHARGE%': 10 },
+    recommendedRole: 'Ultimate Spammer',
+    twoPieceDesc: 'Energy Charge +20%',
+    fourPieceDesc: 'Casting Ultimate immediately refunds 25% Ultimate Energy',
+    twoPieceStat: { 'ENERGY CHARGE%': 20 },
   },
   {
     id: 'Titan',
+    displayName: 'Titan',
     domain: 'Domain II (Defender)',
     recommendedRole: 'Frontline Tank',
-    twoPieceDesc: 'Max HP +15%',
-    fourPieceDesc: 'When HP drops below 50%, gain a 20% Max HP Shield for 5s (15s CD)',
-    twoPieceStat: { 'HP%': 15 },
+    twoPieceDesc: 'Max HP +20%',
+    fourPieceDesc: 'Start each wave with a 20% Max HP Shield and reduce DMG taken by 15%',
+    twoPieceStat: { 'HP%': 20 },
   },
   {
     id: 'Volatus',
+    displayName: 'Volatus',
     domain: 'Domain I (Striker)',
-    recommendedRole: 'High-SPD & Basic Attackers',
-    twoPieceDesc: 'SPD +20%',
-    fourPieceDesc: 'Basic Attack DMG +40%',
-    twoPieceStat: { 'SPD': 20 },
+    recommendedRole: 'High-SPD Assassin',
+    twoPieceDesc: 'SPD +12%',
+    fourPieceDesc: 'Every 3rd Basic Attack unleashes a Wind Wave dealing 80% ATK True DMG',
+    twoPieceStat: { 'SPD': 12 },
   },
   {
     id: 'Radiant Dawn',
+    displayName: 'Radiant Dawn',
     domain: 'Domain II (Defender)',
-    recommendedRole: 'Healer & Shielder',
-    twoPieceDesc: 'Healing Bonus +15%',
-    fourPieceDesc: 'Converts Overheal into a protective Shield for 6s (up to 30% Max HP)',
-    twoPieceStat: { 'HEALING BONUS%': 15 },
+    recommendedRole: 'Healer & Support',
+    twoPieceDesc: 'Healing Bonus +25%',
+    fourPieceDesc: 'Overheal converts to Shield & grants healed allies +15% ATK for 4.0s',
+    twoPieceStat: { 'HEALING BONUS%': 25 },
   },
   {
     id: 'Voidweaver',
+    displayName: 'Omen (Voidweaver)',
     domain: 'Domain III (Tactician)',
-    recommendedRole: 'Debuffer & Status Applier',
-    twoPieceDesc: 'Effect Hit Rate +20%',
-    fourPieceDesc: 'Inflicting a debuff applies 1 Void stack (+5% DMG taken per stack, max 5 stacks / +25%)',
+    recommendedRole: 'Debuffer & Reaction',
+    twoPieceDesc: 'Status Chance (Effect Hit Rate) +20%',
+    fourPieceDesc: 'Elemental Reaction & DoT DMG +40% and ignores Boss Shield',
     twoPieceStat: { 'EFFECT HIT RATE%': 20 },
   },
 ]);

@@ -33,7 +33,12 @@ import {
   getGearMainStatValue,
   SetId,
 } from '../data/equipment';
-import { aggregateConstellationBonuses } from '../data/constellations';
+import {
+  aggregateConstellationBonuses,
+  canUndoConstellationNode,
+  canUnlockConstellationNode,
+  TOTAL_CHRONO_STARS,
+} from '../data/constellations';
 
 // --- PROCEDURAL WEB AUDIO SYNTH ---
 class SoundEngine {
@@ -384,7 +389,8 @@ export function computeHeroStats(
   slotIndexInParty: number,
   partyResonance: ResonanceSummary,
   blessings: Record<string, number>,
-  constellations: Record<string, number>
+  constellations: Record<string, number>,
+  unlockedNodeIds: string[] = []
 ): ComputedStats {
   const lvRatio = (Math.max(1, Math.min(100, prog.level)) - 1) / 99;
   const starMult = 1 + (prog.stars - 2) * 0.06;
@@ -393,21 +399,72 @@ export function computeHeroStats(
   const baseAtk = Math.round((data.atkLv1 + (data.atkLv100 - data.atkLv1) * lvRatio) * starMult);
   const baseDef = Math.round((data.defLv1 + (data.defLv100 - data.defLv1) * lvRatio) * starMult);
 
-  let hpPct = partyResonance.hpPct + (constellations['TITAN_BASTION'] || constellations['C_HP'] || 0) * 6;
-  let atkPct = partyResonance.atkPct + (constellations['STAR_DRAGON'] || constellations['C_ATK'] || 0) * 5;
-  let defPct = partyResonance.defPct + (constellations['TITAN_BASTION'] || constellations['C_HP'] || 0) * 6;
-  let spdPct = partyResonance.spdPct;
-  let flatSpd = 0;
-  let flatHp = 0;
-  let flatAtk = 0;
+  const nodeBonuses = aggregateConstellationBonuses(unlockedNodeIds).stats;
 
-  let critRate = data.baseCritRate + (constellations['STAR_DRAGON'] || constellations['C_CRIT'] || 0) * 2.5;
-  let critDmg = data.baseCritDmg;
-  let breakPower = data.baseBreakPower + partyResonance.breakPct + (constellations['ASTRAL_NEXUS'] || constellations['C_BREAK'] || 0) * 6;
-  let energyCharge = data.baseStats.energyCharge + (constellations['CHRONOS_HOURGLASS'] || 0) * 4;
-  let effectHitRate = data.baseStats.effectHitRate + partyResonance.ehrPct + (constellations['ASTRAL_NEXUS'] || constellations['C_EHR'] || 0) * 4;
-  let effectRes = data.baseStats.effectRes;
-  let healingBonus = data.baseStats.healingBonus;
+  const seasonalStars = constellations['SEASONAL_CROWN'] || 0;
+  const offenseZodiacStars =
+    (constellations['ARIES'] || 0) +
+    (constellations['LEO'] || 0) +
+    (constellations['SAGITTARIUS'] || 0) +
+    (constellations['STAR_DRAGON'] || 0);
+  const bastionZodiacStars =
+    (constellations['TAURUS'] || 0) +
+    (constellations['CANCER'] || 0) +
+    (constellations['CAPRICORN'] || 0) +
+    (constellations['TITAN_BASTION'] || 0);
+  const nexusZodiacStars =
+    (constellations['VIRGO'] || 0) +
+    (constellations['LIBRA'] || 0) +
+    (constellations['SCORPIO'] || 0) +
+    (constellations['ASTRAL_NEXUS'] || 0);
+  const chronoZodiacStars =
+    (constellations['GEMINI'] || 0) +
+    (constellations['AQUARIUS'] || 0) +
+    (constellations['PISCES'] || 0) +
+    (constellations['CHRONOS_HOURGLASS'] || 0);
+
+  let hpPct =
+    partyResonance.hpPct +
+    bastionZodiacStars * 1.5 +
+    seasonalStars * 1.5 +
+    (nodeBonuses['Max HP%'] || 0);
+  let atkPct =
+    partyResonance.atkPct +
+    offenseZodiacStars * 1.5 +
+    seasonalStars * 1.5 +
+    (nodeBonuses['ATK%'] || 0);
+  let defPct =
+    partyResonance.defPct +
+    bastionZodiacStars * 1.5 +
+    seasonalStars * 1.5 +
+    (nodeBonuses['DEF%'] || 0);
+  let spdPct = partyResonance.spdPct;
+  let flatSpd = nodeBonuses['SPD'] || 0;
+  let flatHp = nodeBonuses['Flat HP'] || 0;
+  let flatAtk = nodeBonuses['Flat ATK'] || 0;
+
+  let critRate =
+    data.baseCritRate +
+    offenseZodiacStars * 0.8 +
+    (nodeBonuses['Crit Rate%'] || 0);
+  let critDmg = data.baseCritDmg + (nodeBonuses['Crit DMG%'] || 0);
+  let breakPower =
+    data.baseBreakPower +
+    partyResonance.breakPct +
+    nexusZodiacStars * 1.5 +
+    seasonalStars * 1.5 +
+    (nodeBonuses['Break Power%'] || 0);
+  let energyCharge =
+    data.baseStats.energyCharge +
+    chronoZodiacStars * 1.2 +
+    (nodeBonuses['Energy Charge%'] || 0);
+  let effectHitRate =
+    data.baseStats.effectHitRate +
+    partyResonance.ehrPct +
+    nexusZodiacStars * 1.2 +
+    (nodeBonuses['Effect Hit Rate%'] || 0);
+  let effectRes = data.baseStats.effectRes + (nodeBonuses['Effect RES%'] || 0);
+  let healingBonus = data.baseStats.healingBonus + (nodeBonuses['Healing Bonus%'] || 0);
 
   // Star passives (3*, 5*)
   if (prog.stars >= 3) {
@@ -528,7 +585,200 @@ export function computeHeroStats(
   };
 }
 
+export function computeHeroCP(
+  stats: ComputedStats,
+  prog: HeroProgress,
+  gearList: GearItem[],
+  heroId: string
+): number {
+  const baseGearScore = stats.hp * 0.2 + stats.atk * 2.5 + stats.def * 2.0 + stats.spd * 8;
+  const critRateDec = stats.critRate / 100;
+  const critDmgDec = stats.critDmg / 100;
+  const breakDec = stats.breakPower / 100;
+  const energyDec = stats.energyCharge / 100;
+  const statusDec = stats.effectHitRate / 100;
+
+  const substatMult = Math.max(
+    1,
+    1 +
+      critRateDec * 0.8 +
+      (critDmgDec - 1.5) * 0.4 +
+      (breakDec - 1.0) * 0.5 +
+      (energyDec - 1.0) * 0.5 +
+      statusDec * 0.5
+  );
+
+  const totalSkillLv =
+    prog.skillLevels.basic +
+    prog.skillLevels.active +
+    prog.skillLevels.chain +
+    prog.skillLevels.ultimate;
+  const hasTwoPiece = stats.activeSets.length > 0;
+  const hasFourPiece = Boolean(stats.fourPieceSet);
+  const hasCoreSigil = gearList.some((g) => g.equippedBy === heroId && g.slot === 'Core Sigil');
+
+  const flatBonus =
+    totalSkillLv * 180 +
+    (hasTwoPiece ? 600 : 0) +
+    (hasFourPiece ? 1500 : 0) +
+    (hasCoreSigil ? 1200 : 0);
+
+  return Math.round(baseGearScore * substatMult + flatBonus);
+}
+
+export function computeSquadCP(
+  partyIds: string[],
+  heroCpMap: Record<string, number>,
+  formationLevel: number
+): number {
+  const sumHeroes = partyIds.reduce((sum, id) => sum + (heroCpMap[id] || 0), 0);
+  return sumHeroes + formationLevel * 750;
+}
+
+export interface CPBreakdownItem {
+  category: 'Base Stats' | 'Gear' | 'Skill Levels' | 'Constellation Stars';
+  cp: number;
+  pct: number;
+  color: string;
+  detail: string;
+}
+
+export function computeHeroCPBreakdown(
+  data: ResonatorData,
+  prog: HeroProgress,
+  gearList: GearItem[],
+  formationId: FormationCode,
+  formationLevel: number,
+  slotIndexInParty: number,
+  partyResonance: ResonanceSummary,
+  blessings: Record<string, number>,
+  constellations: Record<string, number>,
+  unlockedNodeIds: string[] = []
+): { totalCp: number; items: CPBreakdownItem[] } {
+  const zeroSkillProg: HeroProgress = {
+    ...prog,
+    skillLevels: { basic: 0, active: 0, chain: 0, ultimate: 0 },
+  };
+  const baseOnlyStats = computeHeroStats(
+    data,
+    zeroSkillProg,
+    [],
+    formationId,
+    formationLevel,
+    slotIndexInParty,
+    partyResonance,
+    blessings,
+    {},
+    []
+  );
+  const baseCp = computeHeroCP(baseOnlyStats, zeroSkillProg, [], data.id);
+
+  const constOnlyStats = computeHeroStats(
+    data,
+    zeroSkillProg,
+    [],
+    formationId,
+    formationLevel,
+    slotIndexInParty,
+    partyResonance,
+    blessings,
+    constellations,
+    unlockedNodeIds
+  );
+  const constCp = Math.max(0, computeHeroCP(constOnlyStats, zeroSkillProg, [], data.id) - baseCp);
+
+  const totalSkillLv =
+    prog.skillLevels.basic +
+    prog.skillLevels.active +
+    prog.skillLevels.chain +
+    prog.skillLevels.ultimate;
+  const skillCp = totalSkillLv * 180;
+
+  const fullStats = computeHeroStats(
+    data,
+    prog,
+    gearList,
+    formationId,
+    formationLevel,
+    slotIndexInParty,
+    partyResonance,
+    blessings,
+    constellations,
+    unlockedNodeIds
+  );
+  const totalCp = computeHeroCP(fullStats, prog, gearList, data.id);
+  const gearCp = Math.max(0, totalCp - baseCp - constCp - skillCp);
+  const sumCp = Math.max(1, baseCp + gearCp + skillCp + constCp);
+
+  const equippedCount = gearList.filter((g) => g.equippedBy === data.id).length;
+  const totalConstStars = Object.values(constellations).reduce((a, b) => a + b, 0);
+
+  return {
+    totalCp,
+    items: [
+      {
+        category: 'Base Stats',
+        cp: baseCp,
+        pct: Number(((baseCp / sumCp) * 100).toFixed(1)),
+        color: '#f59e0b',
+        detail: `Lv.${prog.level} · ${prog.stars}★ Ascension · ${fullStats.rowPosition} Row`,
+      },
+      {
+        category: 'Gear',
+        cp: gearCp,
+        pct: Number(((gearCp / sumCp) * 100).toFixed(1)),
+        color: '#38bdf8',
+        detail: `${equippedCount}/5 Relics · ${
+          fullStats.fourPieceSet
+            ? `4-PC ${fullStats.fourPieceSet}`
+            : fullStats.activeSets.length > 0
+            ? '2-PC Set Active'
+            : 'No Set Bonus'
+        }`,
+      },
+      {
+        category: 'Skill Levels',
+        cp: skillCp,
+        pct: Number(((skillCp / sumCp) * 100).toFixed(1)),
+        color: '#34d399',
+        detail: `Total Skill Lv.${totalSkillLv}/40 (+180 CP/Lv)`,
+      },
+      {
+        category: 'Constellation Stars',
+        cp: constCp,
+        pct: Number(((constCp / sumCp) * 100).toFixed(1)),
+        color: '#c084fc',
+        detail: `${totalConstStars}/${TOTAL_CHRONO_STARS}★ Chrono Rewind Nodes`,
+      },
+    ],
+  };
+}
+
 // --- 60FPS CANVAS COMBAT STRUCTURES ---
+export type HeroAnimState =
+  | 'IDLE'
+  | 'RUN_DASH'
+  | 'ATTACK_COMBO'
+  | 'SKILL_CAST'
+  | 'ULTIMATE_CAST'
+  | 'STAGGER_HIT';
+
+export type BossPartId =
+  | 'BOSS_MAIN'
+  | 'TENTACLE_FRONT'
+  | 'RIGHT_ARM'
+  | 'EYE_BACK'
+  | 'MINION_1'
+  | 'MINION_2'
+  | 'MINION_3'
+  | 'ARENA_1'
+  | 'ARENA_2'
+  | 'ARENA_3'
+  | 'ARENA_4'
+  | 'ARENA_5';
+
+export type BattleSubMode = 'SPIRE' | 'DOMAINS' | 'GUILD_RAID' | 'ARENA';
+
 export interface ActiveDebuff {
   type: DebuffType;
   remaining: number;
@@ -563,15 +813,20 @@ export interface CombatHeroUnit {
   x: number;
   y: number;
   animOffset: number;
+  animState: HeroAnimState;
+  animTimer: number;
+  targetX: number;
+  targetY: number;
   hitFlash: number;
   lastActionLabel: string;
   lastActionTimer: number;
 }
 
 export interface BossPartUnit {
-  id: 'BOSS_MAIN' | 'TENTACLE_FRONT' | 'EYE_BACK';
+  id: BossPartId;
   name: string;
   roleLabel: string;
+  rivalHeroId?: string;
   hp: number;
   maxHp: number;
   atk: number;
@@ -595,6 +850,7 @@ export interface FloatingText {
   id: number;
   text: string;
   subtext?: string;
+  element?: ElementType;
   x: number;
   y: number;
   vy: number;
@@ -602,6 +858,18 @@ export interface FloatingText {
   scale: number;
   life: number;
   maxLife: number;
+}
+
+export interface ImpactShockwave {
+  id: number;
+  x: number;
+  y: number;
+  color: string;
+  secondaryColor: string;
+  maxRadius: number;
+  life: number;
+  maxLife: number;
+  label?: string;
 }
 
 export interface CutInBannerState {
@@ -613,12 +881,331 @@ export interface CutInBannerState {
   remaining: number;
 }
 
+/**
+ * SSOT v2.1 Module 4.2: Status Proc Formula
+ * Total Proc Chance = Base Skill Chance + Gear Status Chance Bonus (Effect Hit Rate%)
+ * Example Max Build: Active Skill Lv.10 (55%) + Ring/Sigil (+25%) + 2-PC Omen/Voidweaver (+20%) = 100%
+ */
+export function calculateTotalStatusProcChance(
+  baseSkillProcPct: number,
+  gearStatusChanceBonusPct: number,
+  bonusSituationalPct: number = 0,
+  targetEffectResPct: number = 0
+): number {
+  const rawTotal = baseSkillProcPct + gearStatusChanceBonusPct + bonusSituationalPct;
+  return Math.max(0, Math.min(100, rawTotal - targetEffectResPct));
+}
+
 export function getFloorSegmentBp(floor: number, isBerserk: boolean): number {
   let base = 120;
   if (floor > 80) base = 360;
   else if (floor > 50) base = 260;
   else if (floor > 20) base = 180;
+  if (floor % 5 !== 0) base = Math.round(base * 0.3);
   return isBerserk ? Math.round(base * 1.5) : base;
+}
+
+export function createFloorEncounter(
+  targetFloor: number,
+  mode: BattleSubMode = 'SPIRE'
+): {
+  isBossFloor: boolean;
+  bossParts: BossPartUnit[];
+  staggerSegments: number;
+  maxSegmentBp: number;
+} {
+  const floorScale = Math.pow(1.11, Math.max(0, targetFloor - 1));
+  const baseBossHp = Math.round(26000 * floorScale);
+  const baseBossAtk = Math.round(280 * floorScale);
+  const baseBossDef = Math.round(140 + targetFloor * 12);
+  const segBp = getFloorSegmentBp(targetFloor, false);
+
+  // MODE: 1v1 ASYNC ARENA (5v5 Gambit AI Defense Squad on Canvas)
+  if (mode === 'ARENA') {
+    const rivalIds = ['H04', 'H01', 'H08', 'H07', 'H13'];
+    const positions: [number, number][] = [
+      [590, 205],
+      [590, 290],
+      [755, 165],
+      [755, 240],
+      [755, 315],
+    ];
+    const arenaParts: BossPartUnit[] = rivalIds.map((hid, idx) => {
+      const rData = RESONATORS.find((r) => r.id === hid) || RESONATORS[0];
+      const uHp = Math.round(16500 * (1 + targetFloor * 0.04));
+      return {
+        id: (`ARENA_${idx + 1}`) as BossPartId,
+        name: `Rival ${rData.name.split(' ')[0]}`,
+        roleLabel: `${rData.element} ${rData.role}`,
+        rivalHeroId: rData.id,
+        hp: uHp,
+        maxHp: uHp,
+        atk: Math.round(baseBossAtk * 0.72),
+        def: Math.round(baseBossDef * 0.75),
+        shield: idx < 2 ? Math.round(uHp * 0.15) : 0,
+        effectRes: 15,
+        alive: true,
+        tauntTimer: idx === 0 ? 3.0 : 0,
+        attackTimer: 1.9 + idx * 0.35,
+        specialTimer: 7.5 + idx * 0.8,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: positions[idx][0],
+        y: positions[idx][1],
+        hitFlash: 0,
+      };
+    });
+    return {
+      isBossFloor: false,
+      bossParts: arenaParts,
+      staggerSegments: 3,
+      maxSegmentBp: 100,
+    };
+  }
+
+  // MODE: GUILD RAID BOSS (90s Infinite HP Old God)
+  if (mode === 'GUILD_RAID') {
+    const raidHp = 999999999;
+    const raidParts: BossPartUnit[] = [
+      {
+        id: 'TENTACLE_FRONT',
+        name: 'Left Arm: Void Bastion',
+        roleLabel: 'Raid Guard (Taunt)',
+        hp: raidHp,
+        maxHp: raidHp,
+        atk: Math.round(baseBossAtk * 0.9),
+        def: Math.round(baseBossDef * 1.1),
+        shield: 0,
+        effectRes: 20,
+        alive: true,
+        tauntTimer: 3.0,
+        attackTimer: 2.3,
+        specialTimer: 8.5,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: 545,
+        y: 265,
+        hitFlash: 0,
+      },
+      {
+        id: 'RIGHT_ARM',
+        name: 'Right Arm: Abyssal Crusher',
+        roleLabel: 'Raid Cleaver',
+        hp: raidHp,
+        maxHp: raidHp,
+        atk: Math.round(baseBossAtk * 1.05),
+        def: Math.round(baseBossDef * 0.95),
+        shield: 0,
+        effectRes: 20,
+        alive: true,
+        tauntTimer: 0,
+        attackTimer: 2.8,
+        specialTimer: 9.5,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: 615,
+        y: 165,
+        hitFlash: 0,
+      },
+      {
+        id: 'BOSS_MAIN',
+        name: 'Guild Raid God: Yog-Sothoth (Infinite HP)',
+        roleLabel: '90s Raid Core',
+        hp: raidHp,
+        maxHp: raidHp,
+        atk: baseBossAtk,
+        def: baseBossDef,
+        shield: 0,
+        effectRes: 25,
+        alive: true,
+        tauntTimer: 0,
+        attackTimer: 2.5,
+        specialTimer: 8.0,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: 735,
+        y: 220,
+        hitFlash: 0,
+      },
+      {
+        id: 'EYE_BACK',
+        name: 'Cosmic Eye of Madness',
+        roleLabel: 'Raid Support',
+        hp: raidHp,
+        maxHp: raidHp,
+        atk: Math.round(baseBossAtk * 1.0),
+        def: Math.round(baseBossDef * 0.7),
+        shield: 0,
+        effectRes: 20,
+        alive: true,
+        tauntTimer: 0,
+        attackTimer: 3.0,
+        specialTimer: 10.0,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: 870,
+        y: 175,
+        hitFlash: 0,
+      },
+    ];
+    return {
+      isBossFloor: true,
+      bossParts: raidParts,
+      staggerSegments: 5,
+      maxSegmentBp: 180,
+    };
+  }
+
+  const isBossFloor = targetFloor % 5 === 0;
+
+  if (!isBossFloor) {
+    // Normal Corridor (F1-F4, F6-F9): 2-3 Void Minions with 3-4x lower HP & Stagger
+    const minionCount = targetFloor % 2 === 1 ? 2 : 3;
+    const minionSpecs: { id: BossPartId; name: string; role: string; x: number; y: number; hpMult: number }[] = [
+      { id: 'MINION_1', name: 'Void Vanguard Husk', role: 'Frontline Minion', x: 610, y: 245, hpMult: 0.24 },
+      { id: 'MINION_2', name: 'Starfall Stalker', role: 'Striker Minion', x: 745, y: 185, hpMult: 0.22 },
+      { id: 'MINION_3', name: 'Chrono Wraith', role: 'Caster Minion', x: 855, y: 260, hpMult: 0.20 },
+    ];
+    const bossParts: BossPartUnit[] = minionSpecs.slice(0, minionCount).map((m, idx) => {
+      const mHp = Math.max(1200, Math.round(baseBossHp * m.hpMult));
+      return {
+        id: m.id,
+        name: m.name,
+        roleLabel: m.role,
+        hp: mHp,
+        maxHp: mHp,
+        atk: Math.round(baseBossAtk * 0.65),
+        def: Math.round(baseBossDef * 0.65),
+        shield: 0,
+        effectRes: Math.min(20, targetFloor),
+        alive: true,
+        tauntTimer: 0,
+        attackTimer: 2.2 + idx * 0.4,
+        specialTimer: 9.0 + idx * 1.2,
+        debuffs: [],
+        voidStacks: 0,
+        voidTimer: 0,
+        freezeResistTimer: 0,
+        x: m.x,
+        y: m.y,
+        hitFlash: 0,
+      };
+    });
+    return {
+      isBossFloor: false,
+      bossParts,
+      staggerSegments: 2,
+      maxSegmentBp: segBp,
+    };
+  }
+
+  const bossParts: BossPartUnit[] = [
+    {
+      id: 'TENTACLE_FRONT',
+      name: 'Left Arm: Void Bastion',
+      roleLabel: 'Front Guard (Taunt)',
+      hp: Math.round(baseBossHp * 0.32),
+      maxHp: Math.round(baseBossHp * 0.32),
+      atk: Math.round(baseBossAtk * 0.85),
+      def: Math.round(baseBossDef * 1.2),
+      shield: 0,
+      effectRes: Math.min(40, targetFloor),
+      alive: true,
+      tauntTimer: 3.5,
+      attackTimer: 2.2,
+      specialTimer: 8.5,
+      debuffs: [],
+      voidStacks: 0,
+      voidTimer: 0,
+      freezeResistTimer: 0,
+      x: 545,
+      y: 265,
+      hitFlash: 0,
+    },
+    {
+      id: 'RIGHT_ARM',
+      name: 'Right Arm: Abyssal Crusher',
+      roleLabel: 'Cleave Striker',
+      hp: Math.round(baseBossHp * 0.3),
+      maxHp: Math.round(baseBossHp * 0.3),
+      atk: Math.round(baseBossAtk * 1.05),
+      def: Math.round(baseBossDef * 0.95),
+      shield: 0,
+      effectRes: Math.min(38, targetFloor),
+      alive: true,
+      tauntTimer: 0,
+      attackTimer: 2.8,
+      specialTimer: 9.5,
+      debuffs: [],
+      voidStacks: 0,
+      voidTimer: 0,
+      freezeResistTimer: 0,
+      x: 615,
+      y: 165,
+      hitFlash: 0,
+    },
+    {
+      id: 'BOSS_MAIN',
+      name: "Old God Core: Azathoth's Remnant",
+      roleLabel: 'Cosmic Core Boss',
+      hp: baseBossHp,
+      maxHp: baseBossHp,
+      atk: baseBossAtk,
+      def: baseBossDef,
+      shield: 0,
+      effectRes: Math.min(45, 5 + targetFloor),
+      alive: true,
+      tauntTimer: 0,
+      attackTimer: 2.5,
+      specialTimer: 8.0,
+      debuffs: [],
+      voidStacks: 0,
+      voidTimer: 0,
+      freezeResistTimer: 0,
+      x: 735,
+      y: 220,
+      hitFlash: 0,
+    },
+    {
+      id: 'EYE_BACK',
+      name: 'Cosmic Eye of Madness',
+      roleLabel: 'Backline Support (Aegis)',
+      hp: Math.round(baseBossHp * 0.25),
+      maxHp: Math.round(baseBossHp * 0.25),
+      atk: Math.round(baseBossAtk * 1.1),
+      def: Math.round(baseBossDef * 0.7),
+      shield: 0,
+      effectRes: Math.min(35, targetFloor),
+      alive: true,
+      tauntTimer: 0,
+      attackTimer: 3.0,
+      specialTimer: 10.0,
+      debuffs: [],
+      voidStacks: 0,
+      voidTimer: 0,
+      freezeResistTimer: 0,
+      x: 870,
+      y: 175,
+      hitFlash: 0,
+    },
+  ];
+
+  return {
+    isBossFloor: true,
+    bossParts,
+    staggerSegments: 5,
+    maxSegmentBp: segBp,
+  };
 }
 
 // --- SSOT V2.1 CLASS: CHRONO COMBAT ENGINE (PRE-BATTLE LOCK & 9 REACTIONS) ---
@@ -965,6 +1552,42 @@ export function runBalanceSelfChecks(): boolean {
   const r10 = calculateCurrentSuccessRate(10, 7);
   const r13 = calculateCurrentSuccessRate(13, 10);
   const formBonusLv10 = getFormationRowBonuses(FORMATIONS[0], 10);
+  const sampleProg: HeroProgress = {
+    id: 'H01',
+    unlocked: true,
+    level: 25,
+    stars: 3,
+    skillLevels: { basic: 3, active: 4, chain: 4, ultimate: 3 },
+    gambit1: 'BOSS_STAGGER_OPEN',
+    gambit2: 'TARGET_HAS_BURN',
+  };
+  const sampleStats = computeHeroStats(
+    RESONATORS[0],
+    sampleProg,
+    [],
+    'BALANCED',
+    3,
+    0,
+    computePartyResonance(['H01']),
+    {},
+    {}
+  );
+  const sampleCp = computeHeroCP(sampleStats, sampleProg, [], 'H01');
+  const sampleSquadCp = computeSquadCP(['H01'], { H01: sampleCp }, 3);
+  // Unique 12-Zodiac Chrono Rewind checks: strict parent-child edges + Major Keystone gate + single Keystone lock
+  const strictConnectedLine =
+    canUnlockConstellationNode(5, [1, 2], 'ARIES') &&
+    !canUnlockConstellationNode(6, [1, 2], 'ARIES');
+  const ariesAllExceptKeystones = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  const canKeystone19 = canUnlockConstellationNode(19, ariesAllExceptKeystones, 'ARIES');
+  const lockedOtherKeystone = !canUnlockConstellationNode(
+    20,
+    [...ariesAllExceptKeystones, 19],
+    'ARIES'
+  );
+  const canUndoLeaf =
+    canUndoConstellationNode(19, [...ariesAllExceptKeystones, 19], 'ARIES') &&
+    !canUndoConstellationNode(14, [...ariesAllExceptKeystones, 19], 'ARIES');
   return (
     RESONATORS.length === 18 &&
     Object.keys(ELEMENTAL_REACTION_MATRIX).length === 9 &&
@@ -973,6 +1596,13 @@ export function runBalanceSelfChecks(): boolean {
     r10 === 100 &&
     r13 === 100 &&
     formBonusLv10.frontDefPct === 7.5 &&
-    formBonusLv10.backAtkPct === 30
+    formBonusLv10.backAtkPct === 30 &&
+    sampleCp > 2500 &&
+    sampleSquadCp === sampleCp + 2250 &&
+    strictConnectedLine &&
+    canKeystone19 &&
+    lockedOtherKeystone &&
+    canUndoLeaf
   );
 }
+

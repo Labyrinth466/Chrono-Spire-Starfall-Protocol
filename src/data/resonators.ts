@@ -100,11 +100,13 @@ export interface ResonatorBaseStats {
   energyCharge: number;
 }
 
+export type HeroRarity = 'SSR' | 'SR' | 'R' | 'N';
+
 export interface ResonatorData {
   id: string;
   name: string;
   title: string;
-  rarity: 'SSR' | 'SR';
+  rarity: HeroRarity;
   element: ElementType;
   regionId: string;
   regionName: string;
@@ -156,18 +158,27 @@ function makeSkill(
   multLv1: number,
   multLv10: number,
   breakBp: number,
-  debuffDuration: number,
-  procLv1: number,
-  procLv10: number,
+  _debuffDuration: number,
+  _procLv1: number,
+  _procLv10: number,
   specialDesc: string,
   extra: Partial<SkillSpec> = {}
 ): SkillSpec {
+  // SSOT v2.1 Module 4.2: Basic Attack cannot inflict Freeze; Freeze lasts 2.0s, all other statuses last 4.0s
+  const debuff = type === 'Basic' && extra.debuff === 'Freeze' ? undefined : extra.debuff;
+  const debuffDuration = debuff === 'Freeze' ? 2.0 : 4.0;
+  const isFreeze = debuff === 'Freeze';
+  const procLv1 =
+    type === 'Basic' ? 10 : type === 'Active' ? (isFreeze ? 25 : 35) : type === 'Ultimate' ? 65 : 100;
+  const procLv10 =
+    type === 'Basic' ? 10 : type === 'Active' ? (isFreeze ? 40 : 55) : type === 'Ultimate' ? 80 : 100;
+
   return {
     type,
     name,
     targetDesc,
     targetRule,
-    cooldown,
+    cooldown: type === 'Active' ? 7.0 : cooldown,
     multLv1,
     multLv10,
     breakPower: breakBp,
@@ -177,6 +188,7 @@ function makeSkill(
     procLv10,
     specialDesc,
     ...extra,
+    debuff,
   };
 }
 
@@ -973,5 +985,21 @@ export function interpolateSkillMult(skill: SkillSpec, skillLv: number): number 
 
 export function interpolateSkillProc(skill: SkillSpec, skillLv: number): number {
   const clamped = Math.max(1, Math.min(10, skillLv));
+  if (skill.type === 'Basic') {
+    return skill.debuff === 'Freeze' ? 0 : 10;
+  }
+  if (skill.type === 'Active') {
+    if (skill.debuff === 'Freeze') {
+      return Math.round(25 + ((40 - 25) * (clamped - 1)) / 9);
+    }
+    // 35% (Lv.1) -> 41% (Lv.4) -> 47% (Lv.7) -> 55% (Lv.10)
+    if (clamped <= 7) {
+      return Math.round(35 + (clamped - 1) * 2);
+    }
+    return Math.round(47 + ((55 - 47) * (clamped - 7)) / 3);
+  }
+  if (skill.type === 'Ultimate') {
+    return Math.round(65 + ((80 - 65) * (clamped - 1)) / 9);
+  }
   return Math.round(skill.procLv1 + ((skill.procLv10 - skill.procLv1) * (clamped - 1)) / 9);
 }
