@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for SSOT v2.3 Refinement: 5 Starter R Resonators & SR/SSR Lock + Free 100% SR Tutorial Pull, Starfall Card Reveal Modal with 25% SR->SSR Fake-Out Shatter, Unified Sanctuaries & Challenges Modal (with Guild Hall Lv.1-5 & 3 Raid Difficulties) + 4-Tab Merchant Hub, Natural Elemental Counter Cycle (Fire > Cryo > Wind > Electro > Fire) & SVG Elemental Wheel Badge, 3D Tarot Card Flip & 5-Zone 4-Layer Swappable Parallax Battlefield, and Tarot/Gambit Hook Fixes.",
-  "updatedAt": "2026-11-06T10:21:53.204077994Z",
+  "summary": "Implementation plan for: (1) Framer Motion staggered bottom-up card entrance animation in Starfall Card Reveal Modal, (2) removing borders while dragging in Heroes & Gambit, and (3) matching the Active Tower Squad & Formation layout perspective to the Tower Battle 2.5D battlefield perspective.",
+  "updatedAt": "2026-11-06T12:26:16.288673003Z",
   "requestFeedback": true,
   "userFacing": true
 }

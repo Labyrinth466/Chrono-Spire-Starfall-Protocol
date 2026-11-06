@@ -1,84 +1,80 @@
-# Implementation Plan — SSOT v2.3 Refinement
+# Starfall Card Reveal Motion, Borderless Dragging & 2.5D Battlefield Formation Perspective
 
-## 1. Starter `R` Roster (5 Units), `SR/SSR` Lock & Tutorial Free `100% SR` Pull
-- **`src/data/resonators.ts`**:
-  - Add 5 `R` (Rare, 1★ Blue Frame) starter Resonators to `RESONATORS` (total 23 Resonators: 12 SSR, 6 SR, 5 R):
-    1. `R01 Vanguard Guard` (`Fire` · `Tank / Breaker` · Front)
-    2. `R02 Gale Archer` (`Wind` · `Ranged DPS` · Back)
-    3. `R03 Frost Acolyte` (`Cryo` · `Debuffer` · Back)
-    4. `R04 Dawn Cleric` (`Light` · `Support & Healer` · Back)
-    5. `R05 Shadow Blade` (`Dark` · `Melee DPS` · Front)
-  - Update `runBalanceSelfChecks()` in `src/engine/combatEngine.ts` to validate the expanded 23-Resonator roster (12 SSR + 6 SR + 5 R) and the updated elemental counter cycle.
-- **`src/App.tsx`**:
-  - Set initial party (`partyIds`) to `['R01', 'R05', 'R02', 'R03', 'R04']` and `INITIAL_HERO_PROGRESS` so only `R01–R05` start with `unlocked: true` (`1★`, `Lv.10`), while all 6 `SR` and 12 `SSR` start with `unlocked: false`.
-  - Render locked `SR/SSR` heroes in the `HEROES` tab and squad pickers with a dark silhouette overlay and `🔒 LOCKED (Summon or Exchange to Unlock)` badge; prevent deploying locked heroes until unlocked via Summon or Merchant Hub Exchange.
-  - Add `hasDoneFirstFreePull: boolean` (initial `false`). In the `SUMMON` tab, display **`[✨ FREE FIRST SUMMON (100% SR)] (0 💎)`** when `!hasDoneFirstFreePull`, guaranteeing 1 random `SR` Resonator unlock on first press.
-  - On subsequent normal pulls that do not roll `SSR` or `SR`, grant an `R` Resonator duplicate card (`R01–R05`, upgrading their Stars up to 5★ and Level) paired with a 3★–4★ Relic drop.
+This plan covers the three targeted refinements requested for **Chrono Spire: Resonator Gambit**: enhancing the **Starfall Card Reveal Modal** with Framer Motion staggered bottom-up entrance animations, removing borders while dragging in **Heroes & Gambit**, and aligning the **Active Tower Squad & Formation** preview perspective with the **Tower Battle** 2.5D battlefield layout.
 
-## 2. `Starfall Card Reveal Modal` & `SR ➔ SSR Shatter Fake-Out` (25% Chance)
-- **`src/App.tsx`**:
-  - When triggering `1x` or `10x Summon` (or the free first pull), open a full-screen **Starfall Card Reveal Overlay** displaying 1 or 10 floating astral cards with rarity-colored back auras (`Blue = R`, `Purple = SR`, `Gold = SSR`).
-  - Support clicking individual cards to flip or clicking **`[✨ REVEAL ALL]`**.
-  - **Fake-Out Shatter (`SR ➔ SSR`)**: When a pull is `SSR`, roll a **25% chance** (`isFakeOut: true`) to initially render the card back with a **Purple (`SR`) aura**. Upon flipping that card, play a violent card shake + golden lightning bolt + spiderweb crack shatter animation (`⚡ GOLDEN ASCENSION!`) that bursts into the **Gold `SSR` card** with a golden chime SFX.
+---
 
-## 3. Unified `[🏰 Sanctuaries & Challenges]` Modal & 4-Tab `[🛒 Merchant Hub]`
-- **Top Header / Battle Bar (`src/App.tsx`)**:
-  - Keep the Tower `Spire Battle` canvas as the central main screen and add two primary buttons on the top bar: **`[🏰 Sanctuaries & Challenges]`** and **`[🛒 Merchant Hub]`**.
-- **`[🏰 Sanctuaries & Challenges]` Split-View Modal**:
-  - **Left Sidebar (6 Modes with Icons)**:
-    1. `🪙 Golden Bounty Vault`
-    2. `⚔️ Striker Sanctum`
-    3. `🛡️ Bastion Foundry`
-    4. `🔮 Astral Observatory`
-    5. `🏟️ 1v1 Async Arena`
-    6. `🐉 Guild Raid: Yog-Sothoth`
-  - **Right Content Area (Top Pixel Art Mode Banner + Action Rows)**:
-    - **Dungeons (4 Domains)**: 5 difficulty rows (`Tier I – V`) showing Floor/CP requirements and drops, with right-aligned **`[⚔️ Fight (1🗝️)]`** and **`[⚡ Sweep (1🗝️+1🎫)]`** buttons.
-    - **1v1 Async Arena**: 5 ranked AI Rival challengers sorted by Squad CP (displaying Rival name, 5-hero portrait icons, `Squad CP`, and rewards) with a right-aligned **`[⚔️ Battle]`** button per row + top-right **`[🛒 Arena Shop]`** shortcut.
-    - **Guild Raid (`Yog-Sothoth`)**:
-      - If `!guildState.joined`: show **`[🛡️ Guild Hall — Join or Create Guild]`** (create custom guild name or join a preset guild) + **`[Donate 10,000 Gold (+Guild EXP)]`** button to level up **Guild Level (`Lv.1–5`)**.
-      - Once joined: show Guild info header + **3 Raid Difficulty rows (`Easy / Normal / Hard`)** with right-aligned **`[⚔️ Fight (1 Attempt)]`**:
-        - `Easy (Guild Lv.1 | Rec. CP 15,000)`: Boss DMG `1.0x`, Score/Medal Multiplier `1.0x`
-        - `Normal (Guild Lv.2 | Rec. CP 40,000)`: Boss DMG `1.8x`, Score/Medal Multiplier `2.2x`
-        - `Hard (Guild Lv.3 | Rec. CP 75,000)`: Boss DMG `3.2x`, Score/Medal Multiplier `4.5x` (if the squad wipes before 90s, final score/medals are halved `0.5x`).
-- **`[🛒 Merchant Hub]` 4-Tab Unified Shop Modal**:
-  - **Tab 1 (`🪙 General Gold Shop`)**: `1x 🎫 Sweep Ticket` (15,000G), `10x 🎫 Sweep Tickets` (135,000G), and Forge Enhancement Catalysts.
-  - **Tab 2 (`🌟 Starfall Exchange`)**: Featured 5★ Signature Weapon (`80 Shards`), Featured SSR Unlock/Ascend (`100 Shards`), Wishlist #1 SSR Unlock/Ascend (`75 Shards`), Reforge & Catalyst Chest (`15 Shards`).
-  - **Tab 3 (`🏆 Arena Armory`)**: Exchange `50 Arena Tokens` for `480 💎 Starlight Gems` and Arena gear rewards.
-  - **Tab 4 (`🎖️ Guild Treasury`)**: Exchange `100 Guild Medals` for `Exotic Voidweaver Core Sigil (+6)`.
-  - Wire shop shortcuts in Summon, Arena, and Guild Raid to open `Merchant Hub` directly on the matching tab.
+### User Review & Critical Decisions
 
-## 4. Natural Elemental Counter Cycle & `<ElementalWheelBadge />` SVG
-- **`src/engine/combatEngine.ts`**:
-  - Update `PRIMARY_ADVANTAGE_MAP` and `getRecommendedCounterElement` to the natural 4-element cycle:
-    - **`🔥 Fire > ❄️ Cryo > 🌪️ Wind > ⚡ Electro > 🔥 Fire`**
-    - **`☀️ Light ↔ 🌑 Dark`** (mutual `+30% DMG`, `+25% Break Power`, `+15% Crit Rate`).
-- **`src/components/ResonatorArtAndWiki.tsx` & `src/App.tsx`**:
-  - Create `<ElementalWheelBadge activeBossElement={...} />` rendering a crisp SVG 4-element directional ring + Light/Dark dual-axis badge, highlighting the active enemy's element and its recommended counter element. Display in the top-right of the battlefield HUD and in the Squad Deployment / Heroes header.
+> [!IMPORTANT]
+> All three requirements are clearly specified and map directly to the existing UI and combat engine perspective:
 
-## 5. Tarot 3-Card 3D Flip Reveal & 5-Zone 4-Layer Swappable Parallax Battlefield
-- **Every-5-Floor Tarot 3-Card Flip (`src/App.tsx`)**:
-  - Start all 3 Tarot cards face-down (`flippedCards: [false, false, false]`) showing an ornate **Astral Pixel Card Back** (`32×40` pixel art back or SVG gold-violet celestial pattern) + **`[✨ REVEAL ALL 3 CARDS]`** button.
-  - Clicking a face-down card flips it (`rotateY(180deg)` 3D CSS perspective transition) to reveal the full-bleed `32×40` 16-Bit Pixel Art illustration and blessing description; clicking a face-up card selects that blessing (`[SELECT BLESSING]`).
-  - When the AFK countdown timer reaches `<= 2.0s`, automatically flip all 3 cards face-up; at `0.0s`, automatically select Card #1.
-- **5-Zone Swappable Parallax Battlefield (`src/engine/pixelRenderer.ts`)**:
-  - Export `ZONE_PARALLAX_ASSETS` with 5 zone slots (`Zone 0` to `Zone 4`), each supporting optional `HTMLImageElement | null` overrides for `{ skyImg, farBgImg, midArchImg, floorImg }` plus a helper `setZoneParallaxAsset(zoneIdx, layer, imageUrl)`.
-  - Compute `zoneIdx = Math.min(4, Math.floor((floor - 1) / 20))` in `renderBattlefieldCanvas` (pass `floor` into `renderBattlefieldCanvas`) and render 4 distinct parallax layers (`0.1x Sky`, `0.35x Far BG`, `0.65x Mid Arch & Weather Particles`, `1.0x Foreground Battle Floor`):
-    - **Zone 0 (F1–20)**: `Starfall Forest Base` (bioluminescent pines, cyan glowing mushrooms, fireflies, ancient rune stones)
-    - **Zone 1 (F21–40)**: `Stormcrag Frost Peaks` (jagged snow peaks, drifting mist, braziers, purple lightning)
-    - **Zone 2 (F41–60)**: `Aether Cloudsea Sanctum` (golden cloudsea temple, floating sanctuary arches, celestial rays)
-    - **Zone 3 (F61–80)**: `Astral Stratosphere Orbit` (curved planetary horizon, Saturn-like astral rings, drifting meteors)
-    - **Zone 4 (F81–100+)**: `Abyssal Singularity Summit` (deep-space violet-gold black hole accretion vortex, floating runic obelisks)
+- **Confirmed Decision 1 — Framer Motion Staggered Bottom-Up Card Reveal (`Starfall Card Reveal Modal`)**: Wrap the reveal modal overlay and card grid with Framer Motion (`AnimatePresence` + `motion.div` container and card item variants) so the modal fades in smoothly and each reveal card flies up from the bottom of the screen (`y: 160, opacity: 0, scale: 0.88` → `y: 0, opacity: 1, scale: 1`) with a staggered delay (`staggerChildren: 0.075` / `delay: i * 0.075`) and spring physics.
+- **Confirmed Decision 2 — Borderless Dragging in `Heroes & Gambit`**:
+  - Remove the outer box/border (`border-2`, card frame background) from the floating 2D Combat Pixel Sprite drag ghost (`draggingHero`) so only the borderless 2D Combat Pixel Sprite (`<PixelPreviewCanvas />`) and floating name/drop badge follow the cursor.
+  - Remove the slot container border outlines (`border`, `border-sky-400/45`, `border-amber-300`, `ring-2`) on formation slots during dragging so slots remain completely borderless (indicating drop target hover via pedestal ellipse glow and subtle scale only).
+- **Confirmed Decision 3 — Match `Active Tower Squad & Formation` Layout Perspective to `Tower Battle`**:
+  - In **Tower Battle**, the 2.5D battlefield floor places **Back Row** on the left (`x = 150`) and **Front Row** on the right (`x = 290`) inside a perspective tactical ellipse ring, divided by an angled dashed midline, with heroes in each row stacked **vertically** (`top` to `bottom`, 1 to 3 units per column) with slight isometric depth stagger.
+  - Update the **Active Tower Squad & Formation** preview box in **Heroes & Gambit** to use the exact same 2.5D battlefield perspective: an elliptical tactical arena floor ring, angled dashed midline divider, **Back Row (+ATK%)** stacked vertically on the left, and **Front Row (+DEF%)** stacked vertically on the right with isometric X-depth offset per slot.
 
-## 6. Hook Fixes & Codebase Cleanup
-- **Gambit `BOSS_STAGGER_OPEN`**: Remove `&& hero.id === 'H04'` in `canFireGambitChain` (`src/App.tsx`) so any Resonator configured with `BOSS_STAGGER_OPEN` can trigger their Chain skill when the boss Stagger gauge is open.
-- **Tarot Blessing Hooks (`src/engine/combatEngine.ts` & `src/App.tsx`)**:
-  - `ARCANA_07 (The Chariot)`: Team SPD `+12% / +20% / +35%`
-  - `ARCANA_08 (Strength)`: Team Break Power `+20% / +35% / +60%`
-  - `ARCANA_09 (The Hermit)`: Frontline wave-start Shield (`20% / 25% / 45% Max HP`) + `20%` Thorns damage reflection
-  - `ARCANA_10 (Wheel of Fortune)`: Team Crit Rate (`+12% / +15% / +30%`) & Crit DMG (`+25% / +40% / +75%`)
-  - `ARCANA_16 (The Tower)`: Breaking 1 Boss Stagger bar triggers a `100% / 150% / 250%` Boss ATK explosion on all boss parts
-  - `ARCANA_17 (The Star)`: Wave-start Ultimate Energy `+25% / +30% / +60%`
-  - `ARCANA_20 (Judgement)`: While Boss is Staggered, all allies deal `+35% / +60% / +100%` bonus DMG
-  - `ARCANA_21 (The World)`: Casting an Ultimate has `25% / 35% / 60%` chance to immediately refund `50%` Energy
-- **Delete Unused File**: Delete `/src/components/VoxelScene3D.tsx` via `delete_file`.
+---
+
+### 1. Overview & Core Concept
+
+- **What It Does**:
+  1. Makes 1x and 10x gacha pulls in the **Starfall Card Reveal Modal** feel dynamic and tactile via Framer Motion staggered bottom-up entrance animations.
+  2. Eliminates box borders around both the floating 2D combat sprite ghost and formation slots while dragging in **Heroes & Gambit**.
+  3. Unifies the visual mental model between **Heroes & Gambit** and **Tower Battle** by rendering the **Active Tower Squad & Formation** preview with the exact same 2.5D battlefield floor perspective and vertical column-row arrangement used in live combat.
+- **Target Audience / Persona**: Players organizing their 5-hero squad formation and summoning resonators.
+- **Key Value**: Consistent spatial perspective between squad setup and combat, cleaner borderless drag-and-drop visuals, and punchier gacha card reveals.
+
+---
+
+### 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. **Starfall Card Reveal Flow**: Clicking `[1x SUMMON]` or `[10x SUMMON]` opens the `Starfall Card Reveal Modal`. An `AnimatePresence` backdrop and `motion.div` card grid animate the cards flying in from the bottom of the viewport one after another (`staggerChildren: 0.075s`, spring damping `20`, stiffness `260`).
+  2. **Borderless Hold-to-Drag Flow**: Pressing and holding an unlocked hero card in **Heroes & Gambit** spawns the floating 2D Combat Pixel Sprite directly under the cursor without any outer rectangular card border or frame, and formation slots highlight only their ground pedestal ellipse without rectangular slot borders.
+  3. **2.5D Battlefield Formation Perspective**: Looking at **Active Tower Squad & Formation** in **Heroes & Gambit** mirrors the left-half of the **Tower Battle** canvas:
+     - Outer 2.5D perspective elliptical floor ring (`rgba(56, 189, 248, 0.25)` border + radial glow).
+     - **Back Row (+ATK%)** column on the Left, stacking its 2–3 pedestals vertically from top to bottom with slight isometric slant.
+     - Angled dashed tactical midline (`skew-x-[-10deg]`) separating Back Row and Front Row, matching the canvas `moveTo(235, horizonY + 12) -> lineTo(195, height - 12)` divider.
+     - **Front Row (+DEF%)** column on the Right, stacking its 2–3 pedestals vertically from top to bottom facing right toward the boss side.
+
+---
+
+### 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1 — Container + Item Variants in `Starfall Card Reveal Modal`**
+  - *Chosen Approach*: Use `AnimatePresence` around the modal and explicit Framer Motion `variants` (`hidden` → `visible` with `staggerChildren: 0.075`) on the grid container and each card (`y: 160` → `0`, `opacity: 0` → `1`, `scale: 0.88` → `1`).
+  - *Why*: Guarantees smooth, deterministic stagger timing for both 1x and 10x pulls without CSS transition conflicts on initial mount.
+- **Decision 2 — Pure Sprite Ghost & Pedestal-Only Highlighting During Drag**
+  - *Chosen Approach*: Strip `border-2 bg-slate-950/90` from the floating drag ghost container and remove `border` classes from the formation slot wrapper in `renderSlotPedestal`.
+  - *Why*: Keeps the 2D pixel character sprite clean as if lifting the unit directly onto the battlefield floor.
+
+---
+
+### 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           App Shell & State                                │
+├─────────────────────────────────────┬──────────────────────────────────────┤
+│     Heroes & Gambit Tab             │     Starfall Card Reveal Modal       │
+│  ┌───────────────────────────────┐  │  ┌────────────────────────────────┐  │
+│  │ Borderless 2D Sprite Drag     │  │  │ AnimatePresence + motion.div   │  │
+│  │ • No box border on ghost      │  │  │ • Grid staggerChildren: 0.075s │  │
+│  │ • No slot border while drag   │  │  │ • Card initial: y:160, op:0    │  │
+│  └──────────────┬────────────────┘  │  │ • Card animate: y:0, op:1      │  │
+│                 ▼                   │  └────────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │                                      │
+│  │ 2.5D Battlefield Perspective  │  │                                      │
+│  │ [Back Row]  ╱  [Front Row]    │  │                                      │
+│  │  (Vertical  ╱   (Vertical     │  │                                      │
+│  │   Stack)    ╱    Stack)       │  │                                      │
+│  │   Slot #4   ╱    Slot #1      │  │                                      │
+│  │   Slot #5   ╱    Slot #2      │  │                                      │
+│  │             ╱    Slot #3      │  │                                      │
+│  └───────────────────────────────┘  │                                      │
+└─────────────────────────────────────┴──────────────────────────────────────┘
+```

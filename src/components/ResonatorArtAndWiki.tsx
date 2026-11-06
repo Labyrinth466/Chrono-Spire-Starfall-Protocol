@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ELEMENT_META, ElementType, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
 import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment.ts';
 import { drawPixelHeroSprite, drawPixelTarotCard, drawPixelTarotCardBack } from '../engine/pixelRenderer.ts';
@@ -232,73 +232,214 @@ export const ElementalWheelBadge: React.FC<{
   activeBossElement?: ElementType;
   compact?: boolean;
 }> = ({ activeBossElement = 'Fire', compact = false }) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const counterEl = getRecommendedCounterElement(activeBossElement);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (ev: PointerEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(ev.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onDocDown);
+    return () => window.removeEventListener('pointerdown', onDocDown);
+  }, [open]);
+
   const cycleNodes: { el: ElementType; icon: string; color: string; x: number; y: number }[] = [
-    { el: 'Fire', icon: '🔥', color: '#f97316', x: 40, y: 14 },
-    { el: 'Cryo', icon: '❄️', color: '#38bdf8', x: 66, y: 40 },
-    { el: 'Wind', icon: '🌪️', color: '#34d399', x: 40, y: 66 },
-    { el: 'Electro', icon: '⚡', color: '#a855f7', x: 14, y: 40 },
+    { el: 'Fire', icon: '🔥', color: '#f97316', x: 38, y: 14 },
+    { el: 'Cryo', icon: '❄️', color: '#38bdf8', x: 64, y: 40 },
+    { el: 'Wind', icon: '🌪️', color: '#34d399', x: 38, y: 66 },
+    { el: 'Electro', icon: '⚡', color: '#a855f7', x: 12, y: 40 },
+  ];
+  const dualNodes: { el: ElementType; icon: string; color: string; x: number; y: number }[] = [
+    { el: 'Light', icon: '☀️', color: '#fbbf24', x: 96, y: 18 },
+    { el: 'Dark', icon: '🌑', color: '#c084fc', x: 96, y: 62 },
   ];
 
+  const reactionChart = [
+    {
+      name: '💥 Melt',
+      combo: '❄️ Freeze + 🔥 Fire / 🔥 Burn + ❄️ Cryo',
+      effect: '2.0x Hit DMG + Consumes Freeze',
+      color: 'text-orange-300 border-orange-500/40 bg-orange-950/30',
+    },
+    {
+      name: '⚡ Superconduct',
+      combo: '❄️ Freeze + ⚡ Electro',
+      effect: '1.5x Hit DMG + Applies 🛡️💔 Defenseless (-30% DEF)',
+      color: 'text-sky-300 border-sky-500/40 bg-sky-950/30',
+    },
+    {
+      name: '🔥 Overload',
+      combo: '🔥 Burn + ⚡ Electro / ⚡ Shock + 🔥 Fire',
+      effect: '1.75x AoE Blast + +60 Bonus Stagger Break',
+      color: 'text-purple-300 border-purple-500/40 bg-purple-950/30',
+    },
+    {
+      name: '🌪️ Swirl',
+      combo: '🌪️ Wind Hit on 🔥/❄️/⚡/🩸 Debuff',
+      effect: '1.35x DMG + Spreads & Refreshes Debuff to All Parts',
+      color: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/30',
+    },
+    {
+      name: '☀️ Solar Eclipse',
+      combo: '☀️ Luminous Mark + 🌑 Dark Hit',
+      effect: '1.8x Burst DMG + Heals Squad for 12% Max HP',
+      color: 'text-amber-300 border-amber-500/40 bg-amber-950/30',
+    },
+    {
+      name: '🌑 Abyssal Rupture',
+      combo: '🌑 Corrosion + ☀️ Light Hit',
+      effect: '1.85x True Burst + +50 Stagger Break Power',
+      color: 'text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-950/30',
+    },
+  ];
+
+  const renderWheelSvg = (sizeClass: string) => (
+    <svg viewBox="0 0 114 80" className={sizeClass}>
+      <defs>
+        <marker id="elArrow" markerWidth="4" markerHeight="4" refX="2.5" refY="2" orient="auto">
+          <path d="M0,0 L4,2 L0,4 Z" fill="#94a3b8" />
+        </marker>
+        <marker id="elArrowGold" markerWidth="4" markerHeight="4" refX="2.5" refY="2" orient="auto">
+          <path d="M0,0 L4,2 L0,4 Z" fill="#fbbf24" />
+        </marker>
+      </defs>
+      {/* Left: 4-Element Outer Cycle Ring */}
+      <circle cx="38" cy="40" r="26" fill="none" stroke="#334155" strokeWidth="1.5" strokeDasharray="3 2" />
+      {/* Directional Arrows: Fire(top)->Cryo(right)->Wind(bottom)->Electro(left)->Fire(top) */}
+      <path d="M47,17 L60,30" stroke="#f97316" strokeWidth="1.6" markerEnd="url(#elArrow)" />
+      <path d="M60,50 L47,63" stroke="#38bdf8" strokeWidth="1.6" markerEnd="url(#elArrow)" />
+      <path d="M29,63 L16,50" stroke="#34d399" strokeWidth="1.6" markerEnd="url(#elArrow)" />
+      <path d="M16,30 L29,17" stroke="#a855f7" strokeWidth="1.6" markerEnd="url(#elArrow)" />
+
+      {cycleNodes.map((n) => {
+        const isBoss = activeBossElement === n.el;
+        const isCounter = counterEl === n.el;
+        return (
+          <g key={n.el}>
+            <circle
+              cx={n.x}
+              cy={n.y}
+              r={isCounter || isBoss ? 10.5 : 8.5}
+              fill="#090d16"
+              stroke={isCounter ? '#fde047' : isBoss ? '#f43f5e' : n.color}
+              strokeWidth={isCounter || isBoss ? '2.2' : '1.3'}
+            />
+            <text x={n.x} y={n.y + 3.5} textAnchor="middle" fontSize="10">
+              {n.icon}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Divider between 4-Element Ring and Vertical Light/Dark Pair */}
+      <line x1="78" y1="10" x2="78" y2="70" stroke="#1e293b" strokeWidth="1" strokeDasharray="2 2" />
+
+      {/* Right: Vertical Light ↕ Dark Mutual Counter Pair */}
+      <path d="M93,30 L93,50" stroke="#fbbf24" strokeWidth="1.4" markerEnd="url(#elArrowGold)" />
+      <path d="M99,50 L99,30" stroke="#c084fc" strokeWidth="1.4" markerEnd="url(#elArrow)" />
+
+      {dualNodes.map((n) => {
+        const isBoss = activeBossElement === n.el;
+        const isCounter = counterEl === n.el;
+        return (
+          <g key={n.el}>
+            <circle
+              cx={n.x}
+              cy={n.y}
+              r={isCounter || isBoss ? 10.5 : 8.5}
+              fill="#090d16"
+              stroke={isCounter ? '#fde047' : isBoss ? '#f43f5e' : n.color}
+              strokeWidth={isCounter || isBoss ? '2.2' : '1.3'}
+            />
+            <text x={n.x} y={n.y + 3.5} textAnchor="middle" fontSize="10">
+              {n.icon}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+
   return (
-    <div
-      className={`flex items-center gap-2 rounded-lg bg-slate-950/90 border border-slate-700/80 shadow-lg backdrop-blur-sm select-none ${
-        compact ? 'px-2 py-1' : 'px-2.5 py-1.5'
-      }`}
-      title="Natural Elemental Cycle: 🔥 Fire > ❄️ Cryo > 🌪️ Wind > ⚡ Electro > 🔥 Fire | ☀️ Light ↔ 🌑 Dark (+30% DMG, +25% Break, +15% Crit)"
-    >
-      <svg viewBox="0 0 80 80" className={compact ? 'w-10 h-10 shrink-0' : 'w-12 h-12 shrink-0'}>
-        <defs>
-          <marker id="elArrow" markerWidth="4" markerHeight="4" refX="2.5" refY="2" orient="auto">
-            <path d="M0,0 L4,2 L0,4 Z" fill="#94a3b8" />
-          </marker>
-        </defs>
-        {/* Outer Cycle Ring */}
-        <circle cx="40" cy="40" r="26" fill="none" stroke="#334155" strokeWidth="1.5" strokeDasharray="3 2" />
-        {/* Directional Arrows: Fire(top)->Cryo(right)->Wind(bottom)->Electro(left)->Fire(top) */}
-        <path d="M49,17 L62,30" stroke="#f97316" strokeWidth="1.5" markerEnd="url(#elArrow)" />
-        <path d="M62,50 L49,63" stroke="#38bdf8" strokeWidth="1.5" markerEnd="url(#elArrow)" />
-        <path d="M31,63 L18,50" stroke="#34d399" strokeWidth="1.5" markerEnd="url(#elArrow)" />
-        <path d="M18,30 L31,17" stroke="#a855f7" strokeWidth="1.5" markerEnd="url(#elArrow)" />
+    <div ref={wrapRef} className="relative inline-block select-none">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        title="Click to inspect full Elemental Advantage & Reaction System Chart"
+        className={`flex items-center justify-center rounded-xl bg-slate-950/90 hover:bg-slate-900 border border-slate-700/80 hover:border-amber-400/70 shadow-lg backdrop-blur-sm cursor-pointer transition-colors ${
+          compact ? 'p-1' : 'p-1.5'
+        }`}
+      >
+        {renderWheelSvg(compact ? 'w-14 h-10 shrink-0' : 'w-16 h-12 shrink-0')}
+      </button>
 
-        {cycleNodes.map((n) => {
-          const isBoss = activeBossElement === n.el;
-          const isCounter = counterEl === n.el;
-          return (
-            <g key={n.el}>
-              <circle
-                cx={n.x}
-                cy={n.y}
-                r={isCounter || isBoss ? 10 : 8}
-                fill="#090d16"
-                stroke={isCounter ? '#fde047' : isBoss ? '#f43f5e' : n.color}
-                strokeWidth={isCounter || isBoss ? '2' : '1.2'}
-              />
-              <text x={n.x} y={n.y + 3.5} textAnchor="middle" fontSize="10">
-                {n.icon}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full mt-1.5 z-50 w-80 sm:w-96 p-3.5 rounded-2xl bg-slate-950/98 backdrop-blur-md border border-amber-400/60 shadow-[0_14px_38px_rgba(0,0,0,0.92)] text-left space-y-2.5"
+        >
+          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+            <span className="text-[11px] font-mono font-extrabold text-amber-300 uppercase tracking-wider">
+              Elemental Advantage &amp; Reaction Chart
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-300 hover:text-white cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
 
-      <div className="text-[10px] leading-tight">
-        <div className="font-bold text-slate-200 flex items-center gap-1">
-          <span>🔥▸❄️▸🌪️▸⚡▸🔥</span>
-          <span className="text-amber-300">· ☀️↔🌑</span>
+          <div className="grid grid-cols-12 gap-2.5 items-center bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+            <div className="col-span-5 flex justify-center">
+              {renderWheelSvg('w-32 h-22')}
+            </div>
+            <div className="col-span-7 text-[10px] font-mono space-y-1">
+              <div className="text-slate-100 font-bold">
+                🔥 ▸ ❄️ ▸ 🌪️ ▸ ⚡ ▸ 🔥 &nbsp;|&nbsp; ☀️ ↕ 🌑
+              </div>
+              <div className="px-2 py-1 rounded bg-slate-950 border border-amber-400/40">
+                Active Enemy: <strong className="text-rose-300">{activeBossElement}</strong> ➔ Counter:{' '}
+                <strong className="text-amber-300">{counterEl}</strong>
+              </div>
+              <div className="text-emerald-300">
+                • Advantage: <strong>+30% DMG · +25% Break · +15% Crit</strong>
+              </div>
+              <div className="text-rose-300">
+                • Disadvantage: <strong>-20% DMG · -15% Break</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-mono font-bold text-sky-300 uppercase tracking-wider">
+              ⚡ Elemental Reaction Combos (Status + Element Trigger)
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+              {reactionChart.map((rx) => (
+                <div
+                  key={rx.name}
+                  className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-mono flex flex-col gap-0.5 ${rx.color}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold">{rx.name}</span>
+                    <span className="text-[9px] text-slate-200">{rx.combo}</span>
+                  </div>
+                  <div className="text-[9.5px] text-slate-300">{rx.effect}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="text-slate-400 mt-0.5">
-          Use{' '}
-          <span className="font-bold text-amber-300">
-            {counterEl}
-          </span>{' '}
-          vs{' '}
-          <span className="font-semibold text-rose-300">
-            {activeBossElement}
-          </span>{' '}
-          <span className="text-emerald-400 font-mono">(+30% DMG)</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

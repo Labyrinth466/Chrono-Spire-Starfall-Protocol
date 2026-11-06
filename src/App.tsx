@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   DebuffType,
   ELEMENT_META,
@@ -645,6 +646,128 @@ export default function App() {
     groupId: ConstellationGroupId;
     nodeIdx: number;
   } | null>({ groupId: 'ARIES', nodeIdx: 1 });
+
+  // Hold-to-Drag 2D Combat Sprite Deployment & Slot Switching in Heroes Tab
+  const [draggingHero, setDraggingHero] = useState<{
+    heroId: string;
+    sourceSlot: number | null;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [hoveredDropSlot, setHoveredDropSlot] = useState<number | null>(null);
+  const holdDragTimerRef = useRef<number | null>(null);
+  const pointerDownInfoRef = useRef<{
+    heroId: string;
+    sourceSlot: number | null;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const suppressNextCardClickRef = useRef<boolean>(false);
+
+  const assignOrSwapHeroAtFormationSlot = useCallback((heroId: string, targetSlot: number) => {
+    setPartyIds((prev) => {
+      const next = [...prev];
+      while (next.length < 5) {
+        const fallback = RESONATORS.find((r) => !next.includes(r.id))?.id || 'R01';
+        next.push(fallback);
+      }
+      const existingIdx = next.indexOf(heroId);
+      if (existingIdx !== -1) {
+        if (existingIdx === targetSlot) return prev;
+        const temp = next[targetSlot];
+        next[targetSlot] = heroId;
+        next[existingIdx] = temp;
+      } else {
+        next[targetSlot] = heroId;
+      }
+      return next;
+    });
+    sfx.play('forge_ok');
+  }, []);
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      const info = pointerDownInfoRef.current;
+      if (!info && !draggingHero) return;
+
+      if (info && !draggingHero) {
+        const dist = Math.hypot(e.clientX - info.startX, e.clientY - info.startY);
+        if (dist > 6) {
+          if (holdDragTimerRef.current) {
+            window.clearTimeout(holdDragTimerRef.current);
+            holdDragTimerRef.current = null;
+          }
+          suppressNextCardClickRef.current = true;
+          setDraggingHero({
+            heroId: info.heroId,
+            sourceSlot: info.sourceSlot,
+            x: e.clientX,
+            y: e.clientY,
+          });
+          sfx.play('hit');
+        }
+      } else if (draggingHero) {
+        setDraggingHero((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const slotEl = el?.closest('[data-formation-slot]') as HTMLElement | null;
+        if (slotEl && slotEl.dataset.formationSlot !== undefined) {
+          setHoveredDropSlot(Number(slotEl.dataset.formationSlot));
+        } else {
+          setHoveredDropSlot(null);
+        }
+      }
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (holdDragTimerRef.current) {
+        window.clearTimeout(holdDragTimerRef.current);
+        holdDragTimerRef.current = null;
+      }
+      pointerDownInfoRef.current = null;
+
+      if (draggingHero) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const slotEl = el?.closest('[data-formation-slot]') as HTMLElement | null;
+        const dropIdx =
+          slotEl && slotEl.dataset.formationSlot !== undefined
+            ? Number(slotEl.dataset.formationSlot)
+            : hoveredDropSlot;
+        if (dropIdx !== null && dropIdx >= 0 && dropIdx < 5) {
+          assignOrSwapHeroAtFormationSlot(draggingHero.heroId, dropIdx);
+        }
+        setDraggingHero(null);
+        setHoveredDropSlot(null);
+        setTimeout(() => {
+          suppressNextCardClickRef.current = false;
+        }, 60);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [draggingHero, hoveredDropSlot, assignOrSwapHeroAtFormationSlot]);
+
+  const startHoldToDragHero = (
+    e: React.PointerEvent,
+    heroId: string,
+    isUnlocked: boolean,
+    sourceSlot: number | null = null
+  ) => {
+    if (!isUnlocked || e.button !== 0) return;
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    pointerDownInfoRef.current = { heroId, sourceSlot, startX: clientX, startY: clientY };
+    if (holdDragTimerRef.current) window.clearTimeout(holdDragTimerRef.current);
+    holdDragTimerRef.current = window.setTimeout(() => {
+      suppressNextCardClickRef.current = true;
+      setDraggingHero({ heroId, sourceSlot, x: clientX, y: clientY });
+      sfx.play('hit');
+    }, 160);
+  };
 
   // Combat Settings & HUD Sync State
   const [cutInEnabled, setCutInEnabled] = useState(true);
@@ -2800,7 +2923,7 @@ export default function App() {
             Chrono Spire
           </span>
           <span className="text-slate-600">|</span>
-          <span className="text-slate-300">
+          <span className="text-slate-300 whitespace-nowrap">
             Floor <strong className="text-amber-300">F{floor}</strong>{' '}
             <span className="text-slate-400">
               ({ZONE_PARALLAX_ASSETS[Math.min(4, Math.floor((floor - 1) / 20))]?.name || 'Void Corridor'} ·{' '}
@@ -2907,15 +3030,8 @@ export default function App() {
            ============================================================ */}
         {activeTab === 'BATTLE' && (
           <div className="flex-1 min-h-0 flex flex-col justify-between relative bg-[#05070f]">
-            {/* PINNED TOP-RIGHT ELEMENTAL WHEEL + SANCTUARIES & MERCHANT HUB DOCK */}
+            {/* PINNED TOP-RIGHT SANCTUARIES & MERCHANT HUB DOCK */}
             <div className="absolute top-2 right-3 z-40 flex items-center gap-2">
-              <ElementalWheelBadge
-                activeBossElement={
-                  hudState.bossParts.find((b) => b.alive)?.element ||
-                  hudState.bossParts[0]?.element
-                }
-                compact
-              />
               {battleSubMode !== 'SPIRE' && (
                 <button
                   onClick={() => {
@@ -3403,12 +3519,13 @@ export default function App() {
                         </span>
                         <CPInfoTooltip title="How Squad CP Works" formula={SQUAD_CP_FORMULA} />
                       </div>
-                      <div
-                        title="Natural Elemental Counter Cycle: Fire > Cryo > Wind > Electro > Fire (+30% DMG, +25% Break Power, +15% Crit Rate | Disadvantage: -20% DMG, -15% Break Power). Light ↔ Dark deal mutual +30% DMG."
-                        className="px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-700/90 text-[10px] font-mono text-slate-200 inline-flex items-center gap-1"
-                      >
-                        <span>🔥 &gt; ❄️ &gt; 🌪️ &gt; ⚡ &gt; 🔥 · ☀️ ↔ 🌑</span>
-                      </div>
+                      <ElementalWheelBadge
+                        activeBossElement={
+                          hudState.bossParts.find((b) => b.alive)?.element ||
+                          hudState.bossParts[0]?.element
+                        }
+                        compact
+                      />
                       {activeDomainChallenge && (
                         <div className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-400/70 text-[11px] font-mono font-bold text-rose-200">
                           🏰 {activeDomainChallenge.domainId} · Tier {activeDomainChallenge.tier} Boss
@@ -3805,7 +3922,7 @@ export default function App() {
                         Resonator Roster · 23 Heroes (12 SSR · 6 SR · 5 Starter R)
                       </h2>
                       <p className="text-[11px] text-slate-400">
-                        Starter R units are unlocked · Summon or Exchange to unlock SR &amp; SSR Sovereigns
+                        Hold &amp; Drag any unlocked card to deploy/swap in Formation · Click to inspect Details &amp; Gambits
                       </p>
                     </div>
                     <span className="text-xs font-mono text-amber-300">
@@ -3819,6 +3936,8 @@ export default function App() {
                         const p = heroProgress[r.id];
                         const isUnlocked = Boolean(p?.unlocked);
                         const inParty = partyIds.includes(r.id);
+                        const partySlotIdx = partyIds.indexOf(r.id);
+                        const isBeingDragged = draggingHero?.heroId === r.id;
                         const elMeta = ELEMENT_META[r.element];
                         const rarityMeta = RARITY_BADGE_META[r.rarity] || RARITY_BADGE_META.N;
                         const elIconMap: Record<string, string> = {
@@ -3840,7 +3959,11 @@ export default function App() {
                         return (
                           <div
                             key={r.id}
+                            onPointerDown={(e) =>
+                              startHoldToDragHero(e, r.id, isUnlocked, inParty ? partySlotIdx : null)
+                            }
                             onClick={() => {
+                              if (suppressNextCardClickRef.current) return;
                               setSelectedHeroId(r.id);
                               setHeroDetailMode(true);
                             }}
@@ -3850,8 +3973,10 @@ export default function App() {
                                 ? `linear-gradient(180deg, ${elMeta.color}38 0%, #0b1020 58%, #040711 100%)`
                                 : 'linear-gradient(180deg, #0f172a 0%, #05070f 100%)',
                             }}
-                            className={`group relative w-full aspect-[3/4] rounded-xl border-2 transition-all cursor-pointer overflow-hidden select-none ${
-                              inParty
+                            className={`group relative w-full aspect-[3/4] rounded-xl border-2 transition-all cursor-grab active:cursor-grabbing overflow-hidden select-none touch-none ${
+                              isBeingDragged
+                                ? 'opacity-45 scale-95'
+                                : inParty
                                 ? 'ring-2 ring-amber-400/60 shadow-lg shadow-amber-500/15'
                                 : 'hover:brightness-110'
                             }`}
@@ -3904,6 +4029,7 @@ export default function App() {
                             {isUnlocked ? (
                               <button
                                 type="button"
+                                onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (inParty) {
@@ -3922,7 +4048,7 @@ export default function App() {
                                     : 'bg-slate-950/85 text-slate-300 border-slate-700 hover:border-amber-400 hover:text-white'
                                 }`}
                               >
-                                {inParty ? `#${partyIds.indexOf(r.id) + 1}` : '+'}
+                                {inParty ? `#${partySlotIdx + 1}` : '+'}
                               </button>
                             ) : (
                               <span className="absolute top-2 right-2 z-30 px-1.5 py-0.5 rounded bg-slate-950/90 border border-slate-700 text-[9px] font-mono font-bold text-slate-400">
@@ -3981,134 +4107,186 @@ export default function App() {
                           Active Tower Squad &amp; Formation
                         </h2>
                         <span className="text-[10px] font-mono text-emerald-300">
-                          🔒 Pre-Battle Setup (Locked on Active Battlefield)
+                          ✋ Hold &amp; Drag Heroes to Assign or Swap Slots
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <ElementalWheelBadge
-                          activeBossElement={
-                            hudState.bossParts.find((b) => b.alive)?.element ||
-                            hudState.bossParts[0]?.element
-                          }
-                          compact
-                        />
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/50 text-amber-300 font-mono font-bold text-[11px]">
-                            ⚔️ SQUAD CP: {squadCP.toLocaleString()}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            Mastery Lv.{formationLevel}/10
-                          </span>
-                        </div>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/50 text-amber-300 font-mono font-bold text-[11px] inline-flex items-center gap-1.5">
+                          <span>⚔️ SQUAD CP: {squadCP.toLocaleString()}</span>
+                          <CPInfoTooltip title="How Squad CP Works" formula={SQUAD_CP_FORMULA} />
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Mastery Lv.{formationLevel}/10 (+{(formationLevel * 750).toLocaleString()} CP)
+                        </span>
                       </div>
                     </div>
 
                     {(() => {
                       const form = FORMATIONS.find((f) => f.id === formationId) || FORMATIONS[2];
-                      const frontIds = partyIds.slice(0, form.frontCount);
-                      const backIds = partyIds.slice(form.frontCount, 5);
+                      const frontIndices = Array.from({ length: form.frontCount }, (_, i) => i);
+                      const backIndices = Array.from({ length: form.backCount }, (_, i) => form.frontCount + i);
+
+                      const renderSlotPedestal = (
+                        slotIdx: number,
+                        rowTag: 'FRONT' | 'BACK',
+                        rowPosIdx: number,
+                        rowTotal: number
+                      ) => {
+                        const hid = partyIds[slotIdx];
+                        const h = RESONATORS.find((r) => r.id === hid) || RESONATORS[0];
+                        const elColor = ELEMENT_META[h.element].color;
+                        const isDropHover = hoveredDropSlot === slotIdx && Boolean(draggingHero);
+                        const isBeingDragged = draggingHero?.heroId === h.id;
+                        // Match Tower Battle 2.5D perspective slant (top units slightly right, bottom units slightly left)
+                        const slantRatio = rowTotal <= 1 ? 0 : rowPosIdx / (rowTotal - 1) - 0.5;
+                        const slantPx = Math.round(-slantRatio * 18);
+
+                        return (
+                          <div
+                            key={`slot-${slotIdx}`}
+                            data-formation-slot={slotIdx}
+                            onPointerDown={(e) => startHoldToDragHero(e, h.id, true, slotIdx)}
+                            onClick={() => {
+                              if (suppressNextCardClickRef.current) return;
+                              setSelectedHeroId(h.id);
+                              setHeroDetailMode(true);
+                            }}
+                            style={{ transform: `translateX(${slantPx}px)` }}
+                            className={`relative px-1.5 py-0.5 rounded-xl transition-transform flex flex-col items-center cursor-grab active:cursor-grabbing group touch-none ${
+                              isDropHover ? 'scale-110 z-20' : 'hover:scale-105 z-10'
+                            } ${isBeingDragged ? 'opacity-40' : ''}`}
+                          >
+                            <div className="relative flex flex-col items-center">
+                              <span className="text-[8px] font-mono text-slate-400/90 leading-none mb-0.5 drop-shadow">
+                                #{slotIdx + 1} {rowTag}
+                              </span>
+                              <PixelPreviewCanvas
+                                hero={h}
+                                compact
+                                className="w-11 h-11 -mb-3 relative z-10 group-hover:scale-110 transition-transform"
+                              />
+                              <div
+                                style={{
+                                  borderColor: isDropHover ? '#fde047' : elColor,
+                                  boxShadow: isDropHover
+                                    ? '0 0 16px #fde047, inset 0 0 8px #fde047'
+                                    : `0 0 10px ${elColor}80, inset 0 0 6px ${elColor}66`,
+                                  background: isDropHover
+                                    ? 'radial-gradient(ellipse at center, rgba(253,224,71,0.55) 0%, rgba(15,23,42,0.95) 75%)'
+                                    : `radial-gradient(ellipse at center, ${elColor}55 0%, rgba(15,23,42,0.95) 75%)`,
+                                }}
+                                className="w-14 h-3.5 rounded-full border-2 transition-all"
+                              />
+                            </div>
+                            <span className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 text-[9px] font-semibold text-slate-100 whitespace-nowrap drop-shadow">
+                              {h.name}
+                            </span>
+                          </div>
+                        );
+                      };
 
                       return (
-                        <div className="relative h-52 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-around overflow-hidden">
+                        <div className="relative h-60 bg-[#050814] border border-slate-800 rounded-xl px-3 py-2 flex flex-col justify-between overflow-hidden select-none">
+                          {/* Tower Battle 2.5D Horizon & Perspective Tactical Floor Ring */}
                           <div
-                            className="absolute inset-0 pointer-events-none opacity-30"
+                            className="absolute inset-x-0 top-0 h-12 pointer-events-none opacity-60"
                             style={{
                               background:
-                                'radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.25), transparent 70%)',
+                                'linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(5, 8, 20, 0) 100%)',
                             }}
                           />
-                          {/* BACK ROW PEDESTALS */}
-                          <div className="z-10 flex flex-col items-center justify-between h-full py-0.5 flex-1">
-                            <span className="text-[10px] font-mono text-sky-300 uppercase tracking-wider">
+                          <svg
+                            viewBox="0 0 400 220"
+                            preserveAspectRatio="none"
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                          >
+                            {/* Horizon line */}
+                            <line
+                              x1="0"
+                              y1="38"
+                              x2="400"
+                              y2="38"
+                              stroke="rgba(148, 163, 184, 0.16)"
+                              strokeWidth="1"
+                            />
+                            {/* 2.5D Perspective Arena Floor Ellipse matching Tower Battle */}
+                            <ellipse
+                              cx="205"
+                              cy="132"
+                              rx="182"
+                              ry="74"
+                              fill="rgba(15, 23, 42, 0.42)"
+                              stroke="rgba(56, 189, 248, 0.24)"
+                              strokeWidth="1.5"
+                            />
+                            {/* Slanted Tactical Front/Back Midline Divider matching Tower Battle */}
+                            <line
+                              x1="215"
+                              y1="48"
+                              x2="182"
+                              y2="208"
+                              stroke="rgba(250, 204, 21, 0.28)"
+                              strokeWidth="1.5"
+                              strokeDasharray="6 6"
+                            />
+                            {/* Direction Indicator toward Enemy/Boss side on the Right */}
+                            <text
+                              x="386"
+                              y="134"
+                              textAnchor="end"
+                              fill="rgba(248, 113, 113, 0.45)"
+                              fontSize="9"
+                              fontFamily="monospace"
+                              fontWeight="bold"
+                            >
+                              BOSS ➔
+                            </text>
+                          </svg>
+
+                          {/* Row Headers aligned with Left (Back Row) and Right (Front Row) */}
+                          <div className="relative z-10 flex items-center justify-around px-2 pt-0.5">
+                            <span className="text-[10px] font-mono font-bold text-sky-300 uppercase tracking-wider">
                               Back Row (+ATK%)
                             </span>
-                            <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 my-auto">
-                              {backIds.map((hid) => {
-                                const h = RESONATORS.find((r) => r.id === hid)!;
-                                const elColor = ELEMENT_META[h.element].color;
-                                return (
-                                  <div
-                                    key={hid}
-                                    onClick={() => {
-                                      setSelectedHeroId(hid);
-                                      setHeroDetailMode(true);
-                                    }}
-                                    className="flex flex-col items-center cursor-pointer group"
-                                  >
-                                    <div className="relative flex flex-col items-center">
-                                      <PixelPreviewCanvas
-                                        hero={h}
-                                        compact
-                                        className="w-11 h-11 -mb-2.5 relative z-10 group-hover:scale-110 transition-transform"
-                                      />
-                                      <div
-                                        style={{
-                                          borderColor: elColor,
-                                          boxShadow: `0 0 10px ${elColor}80, inset 0 0 6px ${elColor}66`,
-                                          background: `radial-gradient(ellipse at center, ${elColor}55 0%, rgba(15,23,42,0.95) 75%)`,
-                                        }}
-                                        className="w-12 h-3.5 rounded-full border-2"
-                                      />
-                                    </div>
-                                    <span className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-900/90 border border-slate-800 text-[9px] font-semibold text-slate-100 whitespace-nowrap">
-                                      {h.name}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="h-36 border-l border-dashed border-amber-400/30 mx-1" />
-
-                          {/* FRONT ROW PEDESTALS */}
-                          <div className="z-10 flex flex-col items-center justify-between h-full py-0.5 flex-1">
-                            <span className="text-[10px] font-mono text-amber-300 uppercase tracking-wider">
+                            <span className="text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider">
                               Front Row (+DEF%)
                             </span>
-                            <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 my-auto">
-                              {frontIds.map((hid) => {
-                                const h = RESONATORS.find((r) => r.id === hid)!;
-                                const elColor = ELEMENT_META[h.element].color;
-                                return (
-                                  <div
-                                    key={hid}
-                                    onClick={() => {
-                                      setSelectedHeroId(hid);
-                                      setHeroDetailMode(true);
-                                    }}
-                                    className="flex flex-col items-center cursor-pointer group"
-                                  >
-                                    <div className="relative flex flex-col items-center">
-                                      <PixelPreviewCanvas
-                                        hero={h}
-                                        compact
-                                        className="w-11 h-11 -mb-2.5 relative z-10 group-hover:scale-110 transition-transform"
-                                      />
-                                      <div
-                                        style={{
-                                          borderColor: elColor,
-                                          boxShadow: `0 0 10px ${elColor}80, inset 0 0 6px ${elColor}66`,
-                                          background: `radial-gradient(ellipse at center, ${elColor}55 0%, rgba(15,23,42,0.95) 75%)`,
-                                        }}
-                                        className="w-12 h-3.5 rounded-full border-2"
-                                      />
-                                    </div>
-                                    <span className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-900/90 border border-slate-800 text-[9px] font-semibold text-slate-100 whitespace-nowrap">
-                                      {h.name}
-                                    </span>
-                                  </div>
-                                );
-                              })}
+                          </div>
+
+                          {/* 2.5D Battlefield Columns: Back Row Vertically Stacked on Left, Front Row Vertically Stacked on Right */}
+                          <div className="relative z-10 flex-1 grid grid-cols-2 items-center px-2">
+                            {/* Left Column: Back Row (x = 150 in Tower Battle) */}
+                            <div className="h-full flex flex-col items-center justify-evenly py-1">
+                              {backIndices.map((slotIdx, rIdx) =>
+                                renderSlotPedestal(slotIdx, 'BACK', rIdx, backIndices.length)
+                              )}
+                            </div>
+
+                            {/* Right Column: Front Row (x = 290 in Tower Battle) */}
+                            <div className="h-full flex flex-col items-center justify-evenly py-1">
+                              {frontIndices.map((slotIdx, rIdx) =>
+                                renderSlotPedestal(slotIdx, 'FRONT', rIdx, frontIndices.length)
+                              )}
                             </div>
                           </div>
                         </div>
                       );
                     })()}
 
-                    <div className="mt-2.5 space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-300">Select Tactical Formation (Applies Next Wave)</span>
+                    <div className="mt-2.5 space-y-2">
+                      {/* HIGH-VISIBILITY TACTICAL FORMATION MASTERY UPGRADE BUTTON */}
+                      <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/10 border border-amber-400/50 shadow-md">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-amber-200 font-display flex items-center gap-1.5">
+                            <span>⬆️ Tactical Formation Mastery</span>
+                            <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-mono text-[10px] font-extrabold">
+                              Lv.{formationLevel}/10
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-300 truncate">
+                            +750 Squad CP/Lv &amp; Boosts Front DEF% / Back ATK%
+                          </div>
+                        </div>
                         <button
                           disabled={formationLevel >= 10 || gold < formationLevel * 600}
                           onClick={() => {
@@ -4118,11 +4296,14 @@ export default function App() {
                             setFormationLevel((lv) => lv + 1);
                             sfx.play('forge_ok');
                           }}
-                          className="text-[11px] font-mono text-amber-300 hover:underline disabled:opacity-40 cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-110 disabled:opacity-40 text-slate-950 font-mono font-extrabold text-[11px] uppercase tracking-wide shadow-md shadow-amber-500/25 cursor-pointer shrink-0"
                         >
-                          {formationLevel >= 10 ? 'MAX Lv.10' : `+Upgrade Lv (${formationLevel * 600}G)`}
+                          {formationLevel >= 10
+                            ? '★ MAX Lv.10'
+                            : `[+UPGRADE Lv.${formationLevel + 1} · ${(formationLevel * 600).toLocaleString()}G]`}
                         </button>
                       </div>
+
                       <div className="grid grid-cols-2 gap-2">
                         {FORMATIONS.map((f) => (
                           <button
@@ -4172,6 +4353,39 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* FLOATING BORDERLESS 2D COMBAT PIXEL SPRITE GHOST WHILE HOLDING/DRAGGING */}
+                {draggingHero && (() => {
+                  const draggedData = RESONATORS.find((r) => r.id === draggingHero.heroId) || RESONATORS[0];
+                  const elColor = ELEMENT_META[draggedData.element].color;
+                  return (
+                    <div
+                      style={{
+                        left: `${draggingHero.x}px`,
+                        top: `${draggingHero.y}px`,
+                        transform: 'translate(-50%, -65%)',
+                      }}
+                      className="fixed z-[100] pointer-events-none flex flex-col items-center select-none"
+                    >
+                      <div className="px-2 py-0.5 mb-0.5 rounded-full bg-amber-400 text-slate-950 font-mono font-extrabold text-[9px] uppercase tracking-wider shadow-lg whitespace-nowrap">
+                        {hoveredDropSlot !== null
+                          ? `Drop to Slot #${hoveredDropSlot + 1}`
+                          : 'Drag to Formation Slot'}
+                      </div>
+                      <div
+                        style={{
+                          filter: `drop-shadow(0 0 14px ${elColor})`,
+                        }}
+                        className="flex flex-col items-center"
+                      >
+                        <PixelPreviewCanvas hero={draggedData} className="w-20 h-20" />
+                        <span className="-mt-1 px-2 py-0.5 rounded-full bg-slate-950/85 text-[10px] font-display font-bold text-white whitespace-nowrap shadow">
+                          {draggedData.name}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               /* MODE B: 3-COLUMN HERO VISUAL DETAIL VIEW (8 Core + 3 Secondary Attributes) */
@@ -6386,194 +6600,234 @@ export default function App() {
       )}
 
       {/* STARFALL CARD REVEAL MODAL & SR ➔ SSR SHATTER FAKE-OUT (25% CHANCE) */}
-      {gachaRevealCards && (
-        <div className="fixed inset-0 z-50 bg-slate-950/92 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-6xl w-full bg-[#090d1a] border-2 border-amber-400/60 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div>
-                <div className="text-xs font-mono text-amber-300 uppercase tracking-wider">
-                  Starfall Altar Summon · Blue = R · Purple = SR · Gold = SSR (Watch for ⚡ SR ➔ SSR Golden Shatter!)
-                </div>
-                <h2 className="text-xl font-bold text-white font-display">
-                  ✨ Starfall Card Reveal ({gachaRevealCards.filter((c) => c.flipped).length}/
-                  {gachaRevealCards.length} Revealed)
-                </h2>
-              </div>
-              <div className="flex items-center gap-2.5">
-                {gachaRevealCards.some((c) => !c.flipped) && (
-                  <button
-                    onClick={() => {
-                      const hasFakeOut = gachaRevealCards.some((c) => !c.flipped && c.isFakeOut);
-                      if (hasFakeOut) {
-                        sfx.play('ult');
-                        setGachaRevealCards((prev) =>
-                          prev
-                            ? prev.map((c) =>
-                                !c.flipped && c.isFakeOut ? { ...c, shattering: true } : { ...c, flipped: true }
-                              )
-                            : null
-                        );
-                        setTimeout(() => {
-                          setGachaRevealCards((prev) =>
-                            prev
-                              ? prev.map((c) => ({
-                                  ...c,
-                                  shattering: false,
-                                  displayRarity: c.actualRarity,
-                                  flipped: true,
-                                }))
-                              : null
-                          );
-                        }, 650);
-                      } else {
-                        sfx.play('gacha');
-                        setGachaRevealCards((prev) =>
-                          prev ? prev.map((c) => ({ ...c, flipped: true, displayRarity: c.actualRarity })) : null
-                        );
-                      }
-                    }}
-                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-extrabold text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-500/25"
-                  >
-                    [✨ REVEAL ALL]
-                  </button>
-                )}
-                <button
-                  onClick={() => setGachaRevealCards(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono font-bold text-white cursor-pointer"
-                >
-                  {gachaRevealCards.every((c) => c.flipped) ? '[✓ CONFIRM & CONTINUE]' : '✕ Skip / Close'}
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`grid gap-3.5 ${
-                gachaRevealCards.length === 1
-                  ? 'grid-cols-1 max-w-xs mx-auto'
-                  : 'grid-cols-2 sm:grid-cols-5'
-              }`}
+      <AnimatePresence>
+        {gachaRevealCards && (
+          <motion.div
+            key="starfall-reveal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-0 z-50 bg-slate-950/92 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 30, scale: 0.96 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              className="max-w-6xl w-full bg-[#090d1a] border-2 border-amber-400/60 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto"
             >
-              {gachaRevealCards.map((card, i) => {
-                const hero = card.hero;
-                const auraStyles =
-                  card.displayRarity === 'SSR'
-                    ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.65)] bg-gradient-to-b from-amber-500/25 via-slate-950 to-slate-950'
-                    : card.displayRarity === 'SR'
-                    ? 'border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.55)] bg-gradient-to-b from-purple-500/25 via-slate-950 to-slate-950'
-                    : 'border-sky-400 shadow-[0_0_16px_rgba(56,189,248,0.45)] bg-gradient-to-b from-sky-500/20 via-slate-950 to-slate-950';
-
-                return (
-                  <div
-                    key={card.uid}
-                    onClick={() => {
-                      if (card.flipped || card.shattering) return;
-                      if (card.isFakeOut) {
-                        sfx.play('ult');
-                        setGachaRevealCards((prev) =>
-                          prev
-                            ? prev.map((c, idx) => (idx === i ? { ...c, shattering: true } : c))
-                            : null
-                        );
-                        setTimeout(() => {
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                  <div className="text-xs font-mono text-amber-300 uppercase tracking-wider">
+                    Starfall Altar Summon · Blue = R · Purple = SR · Gold = SSR (Watch for ⚡ SR ➔ SSR Golden Shatter!)
+                  </div>
+                  <h2 className="text-xl font-bold text-white font-display">
+                    ✨ Starfall Card Reveal ({gachaRevealCards.filter((c) => c.flipped).length}/
+                    {gachaRevealCards.length} Revealed)
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {gachaRevealCards.some((c) => !c.flipped) && (
+                    <button
+                      onClick={() => {
+                        const hasFakeOut = gachaRevealCards.some((c) => !c.flipped && c.isFakeOut);
+                        if (hasFakeOut) {
+                          sfx.play('ult');
                           setGachaRevealCards((prev) =>
                             prev
-                              ? prev.map((c, idx) =>
-                                  idx === i
-                                    ? {
-                                        ...c,
-                                        shattering: false,
-                                        displayRarity: 'SSR',
-                                        flipped: true,
-                                      }
-                                    : c
+                              ? prev.map((c) =>
+                                  !c.flipped && c.isFakeOut ? { ...c, shattering: true } : { ...c, flipped: true }
                                 )
                               : null
                           );
-                        }, 650);
-                      } else {
-                        sfx.play('gacha');
-                        setGachaRevealCards((prev) =>
-                          prev
-                            ? prev.map((c, idx) =>
-                                idx === i ? { ...c, flipped: true, displayRarity: c.actualRarity } : c
-                              )
-                            : null
-                        );
-                      }
-                    }}
-                    className={`relative rounded-xl border-2 p-3 flex flex-col items-center justify-between min-h-[250px] transition-all cursor-pointer select-none overflow-hidden ${auraStyles} ${
-                      card.shattering ? 'animate-bounce ring-4 ring-amber-300 scale-105' : 'hover:-translate-y-1'
-                    }`}
+                          setTimeout(() => {
+                            setGachaRevealCards((prev) =>
+                              prev
+                                ? prev.map((c) => ({
+                                    ...c,
+                                    shattering: false,
+                                    displayRarity: c.actualRarity,
+                                    flipped: true,
+                                  }))
+                                : null
+                            );
+                          }, 650);
+                        } else {
+                          sfx.play('gacha');
+                          setGachaRevealCards((prev) =>
+                            prev ? prev.map((c) => ({ ...c, flipped: true, displayRarity: c.actualRarity })) : null
+                          );
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-extrabold text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-500/25"
+                    >
+                      [✨ REVEAL ALL]
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setGachaRevealCards(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono font-bold text-white cursor-pointer"
                   >
-                    {card.shattering && (
-                      <div className="absolute inset-0 z-30 bg-amber-400/30 backdrop-blur-[1px] flex flex-col items-center justify-center p-2 text-center">
-                        <svg viewBox="0 0 100 100" className="w-24 h-24 stroke-amber-300 fill-none stroke-[3]">
-                          <path d="M50,5 L35,45 L62,48 L25,95 M15,25 L50,50 L85,20 M20,75 L52,52 L85,80" />
-                        </svg>
-                        <span className="text-[11px] font-mono font-extrabold text-amber-200 bg-slate-950/90 px-2 py-0.5 rounded border border-amber-300">
-                          ⚡ SR ➔ SSR SHATTER!
-                        </span>
-                      </div>
-                    )}
+                    {gachaRevealCards.every((c) => c.flipped) ? '[✓ CONFIRM & CONTINUE]' : '✕ Skip / Close'}
+                  </button>
+                </div>
+              </div>
 
-                    {!card.flipped ? (
-                      <div className="flex-1 flex flex-col items-center justify-between w-full py-1">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-extrabold ${
-                            card.displayRarity === 'SSR'
-                              ? 'bg-amber-400 text-slate-950'
-                              : card.displayRarity === 'SR'
-                              ? 'bg-purple-400 text-slate-950'
-                              : 'bg-sky-400 text-slate-950'
-                          }`}
-                        >
-                          {card.displayRarity} AURA
-                        </span>
-                        <div className="my-2">
-                          <PixelTarotCardBackCanvas className="w-28 h-36" />
+              <motion.div
+                variants={{
+                  hidden: { opacity: 1 },
+                  visible: {
+                    opacity: 1,
+                    transition: {
+                      staggerChildren: 0.075,
+                      delayChildren: 0.05,
+                    },
+                  },
+                }}
+                initial="hidden"
+                animate="visible"
+                className={`grid gap-3.5 ${
+                  gachaRevealCards.length === 1
+                    ? 'grid-cols-1 max-w-xs mx-auto'
+                    : 'grid-cols-2 sm:grid-cols-5'
+                }`}
+              >
+                {gachaRevealCards.map((card, i) => {
+                  const hero = card.hero;
+                  const auraStyles =
+                    card.displayRarity === 'SSR'
+                      ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.65)] bg-gradient-to-b from-amber-500/25 via-slate-950 to-slate-950'
+                      : card.displayRarity === 'SR'
+                      ? 'border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.55)] bg-gradient-to-b from-purple-500/25 via-slate-950 to-slate-950'
+                      : 'border-sky-400 shadow-[0_0_16px_rgba(56,189,248,0.45)] bg-gradient-to-b from-sky-500/20 via-slate-950 to-slate-950';
+
+                  return (
+                    <motion.div
+                      key={card.uid}
+                      variants={{
+                        hidden: { opacity: 0, y: 160, scale: 0.88 },
+                        visible: {
+                          opacity: 1,
+                          y: 0,
+                          scale: 1,
+                          transition: {
+                            type: 'spring',
+                            stiffness: 260,
+                            damping: 20,
+                          },
+                        },
+                      }}
+                      onClick={() => {
+                        if (card.flipped || card.shattering) return;
+                        if (card.isFakeOut) {
+                          sfx.play('ult');
+                          setGachaRevealCards((prev) =>
+                            prev
+                              ? prev.map((c, idx) => (idx === i ? { ...c, shattering: true } : c))
+                              : null
+                          );
+                          setTimeout(() => {
+                            setGachaRevealCards((prev) =>
+                              prev
+                                ? prev.map((c, idx) =>
+                                    idx === i
+                                      ? {
+                                          ...c,
+                                          shattering: false,
+                                          displayRarity: 'SSR',
+                                          flipped: true,
+                                        }
+                                      : c
+                                  )
+                                : null
+                            );
+                          }, 650);
+                        } else {
+                          sfx.play('gacha');
+                          setGachaRevealCards((prev) =>
+                            prev
+                              ? prev.map((c, idx) =>
+                                  idx === i ? { ...c, flipped: true, displayRarity: c.actualRarity } : c
+                                )
+                              : null
+                          );
+                        }
+                      }}
+                      className={`relative rounded-xl border-2 p-3 flex flex-col items-center justify-between min-h-[250px] transition-colors cursor-pointer select-none overflow-hidden ${auraStyles} ${
+                        card.shattering ? 'animate-bounce ring-4 ring-amber-300 scale-105' : 'hover:-translate-y-1'
+                      }`}
+                    >
+                      {card.shattering && (
+                        <div className="absolute inset-0 z-30 bg-amber-400/30 backdrop-blur-[1px] flex flex-col items-center justify-center p-2 text-center">
+                          <svg viewBox="0 0 100 100" className="w-24 h-24 stroke-amber-300 fill-none stroke-[3]">
+                            <path d="M50,5 L35,45 L62,48 L25,95 M15,25 L50,50 L85,20 M20,75 L52,52 L85,80" />
+                          </svg>
+                          <span className="text-[11px] font-mono font-extrabold text-amber-200 bg-slate-950/90 px-2 py-0.5 rounded border border-amber-300">
+                            ⚡ SR ➔ SSR SHATTER!
+                          </span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-300">Click to Flip</span>
-                      </div>
-                    ) : (
-                      <div className="flex-1 flex flex-col items-center justify-between w-full">
-                        <div className="w-full flex items-center justify-between">
+                      )}
+
+                      {!card.flipped ? (
+                        <div className="flex-1 flex flex-col items-center justify-between w-full py-1">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold ${
-                              card.actualRarity === 'SSR'
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-extrabold ${
+                              card.displayRarity === 'SSR'
                                 ? 'bg-amber-400 text-slate-950'
-                                : card.actualRarity === 'SR'
+                                : card.displayRarity === 'SR'
                                 ? 'bg-purple-400 text-slate-950'
                                 : 'bg-sky-400 text-slate-950'
                             }`}
                           >
-                            {card.actualRarity}
+                            {card.displayRarity} AURA
                           </span>
-                          <span className="text-[9px] font-mono text-amber-200 truncate max-w-[110px]">
-                            {card.isFakeOut ? '⚡ FAKE-OUT!' : card.note}
-                          </span>
-                        </div>
-
-                        <div className="w-28 h-28 my-1 flex items-center justify-center overflow-hidden rounded-lg bg-slate-900/80 border border-slate-800">
-                          <ResonatorSplashArt hero={hero} className="w-full h-full object-cover scale-125 translate-y-2" />
-                        </div>
-
-                        <div className="text-center w-full space-y-0.5">
-                          <div className="text-xs font-extrabold text-white font-display truncate">
-                            {hero.name}
+                          <div className="my-2">
+                            <PixelTarotCardBackCanvas className="w-28 h-36" />
                           </div>
-                          <div className="text-[10px] font-mono text-amber-300 truncate">
-                            {card.bonusRelicName ? `+ ${card.bonusRelicName}` : hero.title}
+                          <span className="text-[10px] font-mono text-slate-300">Click to Flip</span>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-between w-full">
+                          <div className="w-full flex items-center justify-between">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold ${
+                                card.actualRarity === 'SSR'
+                                  ? 'bg-amber-400 text-slate-950'
+                                  : card.actualRarity === 'SR'
+                                  ? 'bg-purple-400 text-slate-950'
+                                  : 'bg-sky-400 text-slate-950'
+                              }`}
+                            >
+                              {card.actualRarity}
+                            </span>
+                            <span className="text-[9px] font-mono text-amber-200 truncate max-w-[110px]">
+                              {card.isFakeOut ? '⚡ FAKE-OUT!' : card.note}
+                            </span>
+                          </div>
+
+                          <div className="w-28 h-28 my-1 flex items-center justify-center overflow-hidden rounded-lg bg-slate-900/80 border border-slate-800">
+                            <ResonatorSplashArt hero={hero} className="w-full h-full object-cover scale-125 translate-y-2" />
+                          </div>
+
+                          <div className="text-center w-full space-y-0.5">
+                            <div className="text-xs font-extrabold text-white font-display truncate">
+                              {hero.name}
+                            </div>
+                            <div className="text-[10px] font-mono text-amber-300 truncate">
+                              {card.bonusRelicName ? `+ ${card.bonusRelicName}` : hero.title}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* UNIFIED [🏰 SANCTUARIES & CHALLENGES] SPLIT-VIEW MODAL (6 MODES) */}
       {sanctuariesModalOpen && (
