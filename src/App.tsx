@@ -80,9 +80,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Particle, renderBattlefieldCanvas } from './engine/pixelRenderer.ts';
+import { Particle, renderBattlefieldCanvas, ZONE_PARALLAX_ASSETS } from './engine/pixelRenderer.ts';
 import {
+  ElementalWheelBadge,
   PixelPreviewCanvas,
+  PixelTarotCardBackCanvas,
   PixelTarotCardCanvas,
   ResonatorSplashArt,
   WikiModal,
@@ -90,6 +92,21 @@ import {
 
 type GameShellState = 'TITLE_MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 type MainTab = 'BATTLE' | 'HEROES' | 'FORGE' | 'SUMMON' | 'REWIND';
+type SanctuaryTabId = 'BOUNTY' | 'STRIKER' | 'DEFENDER' | 'TACTICIAN' | 'ARENA' | 'GUILD_RAID';
+type MerchantTabId = 'GOLD' | 'STARFALL' | 'ARENA' | 'GUILD';
+type GuildRaidDiff = 'EASY' | 'NORMAL' | 'HARD';
+
+interface GachaRevealCard {
+  uid: string;
+  hero: ResonatorData;
+  actualRarity: HeroRarity;
+  displayRarity: HeroRarity;
+  isFakeOut: boolean;
+  flipped: boolean;
+  shattering: boolean;
+  note: string;
+  bonusRelicName?: string;
+}
 
 const RARITY_BADGE_META: Record<
   HeroRarity,
@@ -103,15 +120,15 @@ const RARITY_BADGE_META: Record<
   },
   SR: {
     label: 'SR',
-    bgClass: 'bg-gradient-to-r from-purple-500 to-sky-400',
-    textClass: 'text-slate-950',
-    borderClass: 'border-sky-200',
+    bgClass: 'bg-gradient-to-r from-purple-600 to-fuchsia-400',
+    textClass: 'text-white',
+    borderClass: 'border-purple-200',
   },
   R: {
     label: 'R',
-    bgClass: 'bg-gradient-to-r from-emerald-500 to-teal-400',
+    bgClass: 'bg-gradient-to-r from-sky-500 to-blue-400',
     textClass: 'text-slate-950',
-    borderClass: 'border-emerald-200',
+    borderClass: 'border-sky-200',
   },
   N: {
     label: 'N',
@@ -387,15 +404,117 @@ const INITIAL_HERO_PROGRESS: Record<string, HeroProgress> = Object.fromEntries(
     r.id,
     {
       id: r.id,
-      unlocked: true,
-      level: r.rarity === 'SSR' ? 25 : 20,
-      stars: r.rarity === 'SSR' ? 3 : 2,
-      skillLevels: r.rarity === 'SSR' ? { basic: 3, active: 4, chain: 4, ultimate: 3 } : { basic: 2, active: 3, chain: 3, ultimate: 2 },
+      unlocked: r.rarity === 'R',
+      level: r.rarity === 'SSR' ? 25 : r.rarity === 'SR' ? 20 : 15,
+      stars: r.rarity === 'SSR' ? 3 : r.rarity === 'SR' ? 2 : 1,
+      skillLevels:
+        r.rarity === 'SSR'
+          ? { basic: 3, active: 4, chain: 4, ultimate: 3 }
+          : r.rarity === 'SR'
+          ? { basic: 2, active: 3, chain: 3, ultimate: 2 }
+          : { basic: 1, active: 2, chain: 2, ultimate: 1 },
       gambit1: r.defaultGambit1,
       gambit2: r.defaultGambit2,
     },
   ])
 );
+
+const ARENA_RIVALS: {
+  rank: number;
+  name: string;
+  title: string;
+  cp: number;
+  tokenReward: number;
+  gemReward: number;
+  teamIds: string[];
+}[] = [
+  {
+    rank: 5,
+    name: 'Novice Watcher Elian',
+    title: 'Bronze Sentinel · Vanguard Trial',
+    cp: 14500,
+    tokenReward: 25,
+    gemReward: 80,
+    teamIds: ['R01', 'R05', 'R02', 'R03', 'R04'],
+  },
+  {
+    rank: 4,
+    name: 'Frostblade Captain Sera',
+    title: 'Silver Glider · Stormcrag Outpost',
+    cp: 26000,
+    tokenReward: 35,
+    gemReward: 110,
+    teamIds: ['H06', 'R01', 'H08', 'H12', 'R04'],
+  },
+  {
+    rank: 3,
+    name: 'Inquisitor Vaelen',
+    title: 'Gold Judicator · Sanctum Order',
+    cp: 42000,
+    tokenReward: 50,
+    gemReward: 150,
+    teamIds: ['H04', 'H03', 'H09', 'H15', 'H18'],
+  },
+  {
+    rank: 2,
+    name: 'Archon Lady Lycoris',
+    title: 'Diamond Sovereign · Eclipse Covenant',
+    cp: 64000,
+    tokenReward: 70,
+    gemReward: 210,
+    teamIds: ['H04', 'H01', 'H07', 'H11', 'H14'],
+  },
+  {
+    rank: 1,
+    name: 'Grand Sovereign Astralis',
+    title: 'Apex Chronomancer · Throne of Stars',
+    cp: 88000,
+    tokenReward: 100,
+    gemReward: 300,
+    teamIds: ['H04', 'H01', 'H10', 'H13', 'H16'],
+  },
+];
+
+const GUILD_RAID_DIFF_SPECS: Record<
+  GuildRaidDiff,
+  {
+    id: GuildRaidDiff;
+    label: string;
+    minGuildLv: number;
+    recCp: number;
+    bossDmgMult: number;
+    scoreMult: number;
+    desc: string;
+  }
+> = {
+  EASY: {
+    id: 'EASY',
+    label: 'Easy · Outer Gate',
+    minGuildLv: 1,
+    recCp: 15000,
+    bossDmgMult: 1.0,
+    scoreMult: 1.0,
+    desc: 'Unlocks Guild Lv.1 · Boss DMG 1.0x · Score & Medals 1.0x',
+  },
+  NORMAL: {
+    id: 'NORMAL',
+    label: 'Normal · Dimensional Rift',
+    minGuildLv: 2,
+    recCp: 40000,
+    bossDmgMult: 1.8,
+    scoreMult: 2.2,
+    desc: 'Unlocks Guild Lv.2 · Boss DMG 1.8x · Score & Medals 2.2x',
+  },
+  HARD: {
+    id: 'HARD',
+    label: 'Hard · Singularity Core',
+    minGuildLv: 3,
+    recCp: 75000,
+    bossDmgMult: 3.2,
+    scoreMult: 4.5,
+    desc: 'Unlocks Guild Lv.3 · Boss DMG 3.2x · Score & Medals 4.5x (0.5x Penalty if Wiped before 90s!)',
+  },
+};
 
 export default function App() {
   // Run SSOT math verification once
@@ -441,8 +560,8 @@ export default function App() {
   const [floor, setFloor] = useState(1);
   const [highestFloor, setHighestFloor] = useState(1);
 
-  // Squad & Formation (Default 5-Hero Squad: Caelum H04, Kallen H01, Kahori H10, Yuzuki H07, Aurelia H13)
-  const [partyIds, setPartyIds] = useState<string[]>(['H04', 'H01', 'H10', 'H07', 'H13']);
+  // Squad & Formation (Default 5-Hero Starter R Squad: R01 Vanguard Guard, R05 Shadow Blade, R02 Gale Archer, R03 Frost Acolyte, R04 Dawn Cleric)
+  const [partyIds, setPartyIds] = useState<string[]>(['R01', 'R05', 'R02', 'R03', 'R04']);
   const [formationId, setFormationId] = useState<'HYPER_CARRY' | 'SOLO_BASTION' | 'BALANCED' | 'VANGUARD'>('BALANCED');
   const [formationLevel, setFormationLevel] = useState(3);
   const [heroProgress, setHeroProgress] = useState<Record<string, HeroProgress>>(INITIAL_HERO_PROGRESS);
@@ -484,13 +603,36 @@ export default function App() {
   const [zoomedConstellationId, setZoomedConstellationId] = useState<ConstellationGroupId | null>(null);
   const [hoveredConstellationId, setHoveredConstellationId] = useState<ConstellationGroupId>('ARIES');
 
-  // UI Selection States
-  const [selectedHeroId, setSelectedHeroId] = useState<string>('H01');
+  // UI Selection States & v2.3 Modals
+  const [selectedHeroId, setSelectedHeroId] = useState<string>('R01');
   const [heroDetailMode, setHeroDetailMode] = useState<boolean>(false);
-  const [selectedGearId, setSelectedGearId] = useState<string>('G_H01_W');
+  const [selectedGearId, setSelectedGearId] = useState<string>('G_R01_W');
   const [forgeFeedback, setForgeFeedback] = useState<{ text: string; success: boolean } | null>(null);
   const [activeBannerId, setActiveBannerId] = useState<'RATE_UP' | 'STANDARD'>('RATE_UP');
   const [exchangeShopOpen, setExchangeShopOpen] = useState<boolean>(false);
+  const [sanctuariesModalOpen, setSanctuariesModalOpen] = useState<boolean>(false);
+  const [sanctuaryTab, setSanctuaryTab] = useState<SanctuaryTabId>('BOUNTY');
+  const [merchantHubOpen, setMerchantHubOpen] = useState<boolean>(false);
+  const [merchantTab, setMerchantTab] = useState<MerchantTabId>('GOLD');
+  const [hasDoneFirstFreePull, setHasDoneFirstFreePull] = useState<boolean>(false);
+  const [gachaRevealCards, setGachaRevealCards] = useState<GachaRevealCard[] | null>(null);
+  const [guildState, setGuildState] = useState<{
+    joined: boolean;
+    name: string;
+    level: number;
+    exp: number;
+  }>({ joined: false, name: 'Starfall Knights', level: 1, exp: 0 });
+  const [guildRaidDiff, setGuildRaidDiff] = useState<GuildRaidDiff>('EASY');
+  const guildRaidDiffRef = useRef<GuildRaidDiff>('EASY');
+  useEffect(() => {
+    guildRaidDiffRef.current = guildRaidDiff;
+  }, [guildRaidDiff]);
+  const [activeArenaRivalIndex, setActiveArenaRivalIndex] = useState<number>(0);
+  const activeArenaRivalRef = useRef<number>(0);
+  useEffect(() => {
+    activeArenaRivalRef.current = activeArenaRivalIndex;
+  }, [activeArenaRivalIndex]);
+
   const [featuredBannerHeroId, setFeaturedBannerHeroId] = useState<string>('H01');
   const [wishlistIds, setWishlistIds] = useState<string[]>(['H01', 'H04', 'H07', 'H10', 'H13']);
   const [wishlistSlotPicker, setWishlistSlotPicker] = useState<number | null>(null);
@@ -508,6 +650,7 @@ export default function App() {
   const [cutInEnabled, setCutInEnabled] = useState(true);
   const [autoUltimate, setAutoUltimate] = useState(true);
   const [blessingChoices, setBlessingChoices] = useState<BlessingCardSpec[] | null>(null);
+  const [tarotFlipped, setTarotFlipped] = useState<[boolean, boolean, boolean]>([false, false, false]);
   const [tarotAutoTimer, setTarotAutoTimer] = useState<number>(6.0);
   const [bgmStatus, setBgmStatus] = useState<BgmEngineStatus>(sfx.bgmStatus);
   const [bgmTheme, setBgmTheme] = useState<BgmThemeMode>(sfx.bgmTheme);
@@ -666,10 +809,19 @@ export default function App() {
       const activeMode = overrideMode || battleSubMode;
       const encounterMode: BattleSubMode = activeMode === 'DOMAINS' ? 'SPIRE' : activeMode;
       const form = FORMATIONS.find((f) => f.id === formationId) || FORMATIONS[2];
-      const startEnergyTier = blessings['ARCANA_07'] || 0;
-      const startEnergy = startEnergyTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_07')!.tiers[Math.min(2, startEnergyTier - 1)] : 15;
-      const frontShieldTier = blessings['ARCANA_08'] || 0;
-      const frontShieldPct = frontShieldTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_08')!.tiers[Math.min(2, frontShieldTier - 1)] : 0;
+      // XVII. The Star (ARCANA_17): Wave-start Ultimate Energy (+25% / +30% / +60%)
+      const starEnergyTier = blessings['ARCANA_17'] || 0;
+      const startEnergy =
+        starEnergyTier > 0
+          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_17')!.tiers[Math.min(2, starEnergyTier - 1)]
+          : 15;
+      // IX. The Hermit (ARCANA_09): Frontline Wave-Start Shield (20% / 25% / 45% Max HP)
+      const hermitShieldTier = blessings['ARCANA_09'] || 0;
+      const frontShieldPct =
+        hermitShieldTier > 0
+          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_09')!.tiers[Math.min(2, hermitShieldTier - 1)]
+          : 0;
+      // III. The Empress (ARCANA_03): Floor Clear Heal
       const empressTier = blessings['ARCANA_03'] || 0;
       const floorHealPct = empressTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_03')!.tiers[Math.min(2, empressTier - 1)] : 0;
 
@@ -905,6 +1057,19 @@ export default function App() {
         if (rem >= sim.currentSegmentBp) {
           rem -= sim.currentSegmentBp;
           sim.staggerSegments -= 1;
+          // XVI. The Tower (ARCANA_16): Breaking 1 Boss Stagger bar triggers a 100%/150%/250% Boss ATK explosion
+          const towerTier = blessings['ARCANA_16'] || 0;
+          if (towerTier > 0) {
+            const towerMult =
+              BLESSING_CARDS.find((b) => b.id === 'ARCANA_16')!.tiers[Math.min(2, towerTier - 1)] / 100;
+            sim.bossParts.forEach((bp) => {
+              if (!bp.alive) return;
+              const expDmg = Math.round(bp.atk * towerMult);
+              bp.hp = Math.max(0, bp.hp - expDmg);
+              if (sim.mode === 'GUILD_RAID') sim.guildRaidDamage += expDmg;
+              spawnFloatingText(`TOWER -${expDmg.toLocaleString()}`, bp.x, bp.y - 26, '#fb923c', 1.1);
+            });
+          }
           // Check Caelum (H04) 5-star passive: Breaking 1 bar heals team 10% HP
           const caelum = sim.heroes.find((h) => h.id === 'H04' && h.hp > 0 && h.prog.stars >= 5);
           if (caelum) {
@@ -963,15 +1128,15 @@ export default function App() {
           (hero.shield > 0 && sim.heroes.some((h) => h.id === 'H13' && h.hp > 0 && h.prog.stars >= 4) ? 1.15 : 1)
       );
 
-      // Handle Ultimate Cut-In & Energy Refund (Tarot ARCANA_10 Wheel of Fortune)
+      // Handle Ultimate Cut-In & Energy Refund (Tarot ARCANA_21 XXI. The World)
       if (skill.type === 'Ultimate') {
         hero.energy = 0;
-        const loopTier = blessings['ARCANA_10'] || 0;
-        if (loopTier > 0) {
-          const chance = BLESSING_CARDS.find((b) => b.id === 'ARCANA_10')!.tiers[Math.min(2, loopTier - 1)];
+        const worldTier = blessings['ARCANA_21'] || 0;
+        if (worldTier > 0) {
+          const chance = BLESSING_CARDS.find((b) => b.id === 'ARCANA_21')!.tiers[Math.min(2, worldTier - 1)];
           if (Math.random() * 100 < chance) {
             hero.energy = 50;
-            spawnFloatingText('CHRONO LOOP +50% EN', hero.x, hero.y - 25, '#38bdf8', 0.95);
+            spawnFloatingText('THE WORLD +50% EN', hero.x, hero.y - 25, '#38bdf8', 0.95);
           }
         }
         // Full-Screen 0.55s+ Splash Cut-In Override rule (Module 2.4)
@@ -1259,11 +1424,14 @@ export default function App() {
         if (hero.id === 'H16' && hero.prog.stars >= 4 && target.hp / target.maxHp < 0.5) bonusMult *= 1.25;
         if (target.voidStacks > 0) bonusMult *= 1 + target.voidStacks * 0.05;
 
-        // Staggered Multiplier (+50% base + Tarot ARCANA_16 The Tower)
+        // Staggered Multiplier (+50% base + Tarot ARCANA_20 XX. Judgement)
         if (sim.isStaggered) {
-          const ruinTier = blessings['ARCANA_16'] || 0;
-          const ruinBonus = ruinTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_16')!.tiers[Math.min(2, ruinTier - 1)] / 100 : 0;
-          bonusMult *= 1.5 + ruinBonus;
+          const judgeTier = blessings['ARCANA_20'] || 0;
+          const judgeBonus =
+            judgeTier > 0
+              ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_20')!.tiers[Math.min(2, judgeTier - 1)] / 100
+              : 0;
+          bonusMult *= 1.5 + judgeBonus;
         }
 
         // Kahori (H10) 4* Double Basic Attack proc & Ultimate Bleed Detonation
@@ -1414,7 +1582,7 @@ export default function App() {
       if (aliveParts.length === 0) return false;
 
       const g1 = hero.prog.gambit1;
-      if (g1 === 'BOSS_STAGGER_OPEN' && !sim.isStaggered && sim.staggerSegments > 0 && hero.id === 'H04') return true;
+      if (g1 === 'BOSS_STAGGER_OPEN' && !sim.isStaggered && sim.staggerSegments > 0) return true;
       if (g1 === 'ALLY_HP_BELOW_50' && sim.heroes.some((a) => a.hp > 0 && a.hp / a.maxHp < 0.5)) return true;
       if (g1 === 'BOSS_SHIELD_ACTIVE' && aliveParts.some((b) => b.shield > 0)) return true;
       if (g1 === 'ALWAYS_READY') return true;
@@ -1445,14 +1613,16 @@ export default function App() {
         if (sim.cutIn.remaining <= 0) sim.cutIn = null;
       }
 
-      // Check 90s Guild Raid Completion
+      // Check 90s Guild Raid Completion (Scaled by Easy / Normal / Hard Score Multiplier)
       if (sim.mode === 'GUILD_RAID' && sim.waveElapsed >= 90) {
-        const medalsEarned = Math.max(25, Math.round(sim.guildRaidDamage / 12000));
+        const diffSpec = GUILD_RAID_DIFF_SPECS[guildRaidDiffRef.current];
+        const scoredDamage = Math.round(sim.guildRaidDamage * diffSpec.scoreMult);
+        const medalsEarned = Math.max(25, Math.round(scoredDamage / 12000));
         setGuildMedals((m) => m + medalsEarned);
-        setGuildTotalDamage((d) => d + sim.guildRaidDamage);
+        setGuildTotalDamage((d) => d + scoredDamage);
         setGuildAttempts((a) => Math.max(0, a - 1));
         pushLog(
-          `90s GUILD RAID COMPLETE! Total DMG: ${sim.guildRaidDamage.toLocaleString()} · +${medalsEarned} Guild Medals!`
+          `90s GUILD RAID [${diffSpec.id}] COMPLETE! Scored DMG: ${scoredDamage.toLocaleString()} (${diffSpec.scoreMult}x) · +${medalsEarned} Guild Medals!`
         );
         initFloorWave(sim.floor, false, 'GUILD_RAID');
         return;
@@ -1532,7 +1702,9 @@ export default function App() {
 
       // Update Boss Parts & DoTs
       const yuzuki4StarActive = sim.heroes.some((h) => h.id === 'H07' && h.hp > 0 && h.prog.stars >= 4);
-      const berserkMult = sim.isBerserk ? 2.0 : 1.0;
+      const raidDiffDmgMult =
+        sim.mode === 'GUILD_RAID' ? GUILD_RAID_DIFF_SPECS[guildRaidDiffRef.current].bossDmgMult : 1.0;
+      const berserkMult = (sim.isBerserk ? 2.0 : 1.0) * raidDiffDmgMult;
       const berserkSpdMult = sim.isBerserk ? 1.5 : 1.0;
 
       sim.bossParts.forEach((b) => {
@@ -1590,9 +1762,9 @@ export default function App() {
           if (targetHero.id === 'H04' && targetHero.prog.stars >= 4) dmg = Math.round(dmg * 0.82);
           if (yuzuki4StarActive && b.debuffs.length > 0) dmg = Math.round(dmg * 0.85);
 
-          // Tarot ARCANA_08 Strength Thorns (15%)
-          if ((blessings['ARCANA_08'] || 0) > 0 && targetHero.stats.rowPosition === 'Front') {
-            b.hp = Math.max(1, b.hp - Math.round(dmg * 0.15));
+          // Tarot ARCANA_09 IX. The Hermit Thorns (20% Damage Reflection)
+          if ((blessings['ARCANA_09'] || 0) > 0 && targetHero.stats.rowPosition === 'Front') {
+            b.hp = Math.max(1, b.hp - Math.round(dmg * 0.2));
           }
 
           if (targetHero.shield > 0) {
@@ -1734,11 +1906,15 @@ export default function App() {
       // Check Wave Victory (Spire vs 1v1 Async Arena)
       if (sim.mode === 'ARENA') {
         if (sim.bossParts.length > 0 && sim.bossParts.every((b) => !b.alive)) {
-          setArenaTokens((t) => t + 35);
-          setStarlightGems((s) => s + 120);
+          const rival = ARENA_RIVALS[activeArenaRivalRef.current] || ARENA_RIVALS[0];
+          setArenaTokens((t) => t + rival.tokenReward);
+          setStarlightGems((s) => s + rival.gemReward);
           setArenaRankPts((r) => r + 25);
-          pushLog('1v1 ARENA VICTORY! +35 Arena Tokens · +120 Starlight Gems · +25 Rank Pts!');
-          initFloorWave(sim.floor, true, 'ARENA');
+          pushLog(
+            `1v1 ARENA VICTORY vs ${rival.name}! +${rival.tokenReward} Arena Tokens · +${rival.gemReward} Starlight Gems · +25 RP!`
+          );
+          setBattleSubMode('SPIRE');
+          initFloorWave(floor, true, 'SPIRE');
         }
       } else if (sim.mode === 'SPIRE') {
         const mainCore = sim.bossParts.find((b) => b.id === 'BOSS_MAIN');
@@ -1751,7 +1927,9 @@ export default function App() {
             grantDomainTierReward(activeChallenge.domainId, activeChallenge.tier, false);
             setActiveDomainChallenge(null);
             activeDomainChallengeRef.current = null;
-            setBattleSubMode('DOMAINS');
+            setBattleSubMode('SPIRE');
+            setSanctuariesModalOpen(true);
+            initFloorWave(floor, true, 'SPIRE');
             pushLog(`DOMAIN TIER ${activeChallenge.tier} CLEARED! Sweep unlocked for ${activeChallenge.domainId} Tier ${activeChallenge.tier}!`);
             return;
           }
@@ -1767,9 +1945,10 @@ export default function App() {
           setHighestFloor((hf) => Math.max(hf, nextFl));
           pushLog(`Floor ${sim.floor} Cleared! +${earnedGold.toLocaleString()} Gold · +${earnedGems} Starlight.`);
 
-          // Every 5 floors: Open Roguelite Tarot Blessing Modal (Module 1.1 & 5) with 6s Auto-Card Timer
+          // Every 5 floors: Open Roguelite Tarot Blessing Modal (Face-Down 3-Card Flip + 6s Auto-Card Timer)
           if (sim.floor % 5 === 0) {
             const shuffled = [...BLESSING_CARDS].sort(() => Math.random() - 0.5).slice(0, 3);
+            setTarotFlipped([false, false, false]);
             setTarotAutoTimer(6.0);
             setBlessingChoices(shuffled);
           }
@@ -1779,8 +1958,25 @@ export default function App() {
 
       // Check Total Party Wipe
       if (sim.heroes.every((h) => h.hp <= 0)) {
-        if (sim.mode === 'GUILD_RAID' || sim.mode === 'ARENA') {
-          initFloorWave(sim.floor, false, sim.mode);
+        if (sim.mode === 'GUILD_RAID') {
+          const diffSpec = GUILD_RAID_DIFF_SPECS[guildRaidDiffRef.current];
+          const wipePenalty = diffSpec.id === 'HARD' ? 0.5 : 1.0;
+          const scoredDamage = Math.round(sim.guildRaidDamage * diffSpec.scoreMult * wipePenalty);
+          const medalsEarned = Math.max(10, Math.round(scoredDamage / 12000));
+          setGuildMedals((m) => m + medalsEarned);
+          setGuildTotalDamage((d) => d + scoredDamage);
+          setGuildAttempts((a) => Math.max(0, a - 1));
+          pushLog(
+            diffSpec.id === 'HARD'
+              ? `SQUAD WIPED BEFORE 90s ON HARD RAID! Score & Medals Halved (0.5x): +${scoredDamage.toLocaleString()} Score · +${medalsEarned} Medals!`
+              : `Guild Raid Attempt Ended — +${scoredDamage.toLocaleString()} Score · +${medalsEarned} Medals.`
+          );
+          setBattleSubMode('SPIRE');
+          initFloorWave(floor, false, 'SPIRE');
+        } else if (sim.mode === 'ARENA') {
+          pushLog('1v1 Arena Squad Defeated — Returning to Spire.');
+          setBattleSubMode('SPIRE');
+          initFloorWave(floor, false, 'SPIRE');
         } else {
           setShellState('GAME_OVER');
         }
@@ -1792,7 +1988,14 @@ export default function App() {
       lastTime = now;
       const dt = Math.min(rawDt, 0.05);
 
-      const isSimActive = shellState === 'PLAYING' && !blessingChoices && !showWiki && battleSubMode !== 'DOMAINS';
+      const isSimActive =
+        shellState === 'PLAYING' &&
+        !blessingChoices &&
+        !showWiki &&
+        !sanctuariesModalOpen &&
+        !merchantHubOpen &&
+        !gachaRevealCards &&
+        battleSubMode !== 'DOMAINS';
       if (isSimActive) {
         tickSimulation(dt);
       }
@@ -1818,7 +2021,8 @@ export default function App() {
             sim.currentSegmentBp,
             sim.maxSegmentBp,
             sim.shockwaves,
-            sim.staggerWarningTimer
+            sim.staggerWarningTimer,
+            sim.floor
           );
         }
       }
@@ -1851,13 +2055,31 @@ export default function App() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [shellState, blessingChoices, showWiki, autoUltimate, cutInEnabled, blessings, constellations, partyResonance, battleSubMode, initFloorWave]);
+  }, [
+    shellState,
+    blessingChoices,
+    showWiki,
+    sanctuariesModalOpen,
+    merchantHubOpen,
+    gachaRevealCards,
+    autoUltimate,
+    cutInEnabled,
+    blessings,
+    constellations,
+    partyResonance,
+    battleSubMode,
+    initFloorWave,
+    floor,
+  ]);
 
-  // 6.0s Auto-Card Countdown for Every-5-Floor Tarot Pop-up (SSOT v2.1 Module 5)
+  // 6.0s Auto-Card Countdown for Every-5-Floor Tarot Pop-up (Auto-flips at <= 2.0s, selects Card #1 at 0.0s)
   useEffect(() => {
     if (!blessingChoices || blessingChoices.length === 0) return;
     const iv = setInterval(() => {
       setTarotAutoTimer((prev) => {
+        if (prev <= 2.2) {
+          setTarotFlipped([true, true, true]);
+        }
         if (prev <= 0.2) {
           const card = blessingChoices[0];
           if (card) {
@@ -2281,26 +2503,63 @@ export default function App() {
     setSelectedGearId(sigil.id);
   };
 
-  const handleSummonPull = (count: 1 | 10) => {
-    const cost = count * 160;
+  const handleSummonPull = (count: 1 | 10, forceFreeFirstPull = false) => {
+    const isFreeFirst = forceFreeFirstPull || (!hasDoneFirstFreePull && count === 1);
+    const cost = isFreeFirst ? 0 : count * 160;
     if (starlightGems < cost) return;
-    setStarlightGems((s) => s - cost);
-    // SSOT v2.1 Module 6.2: 1 Pull = 1 Starfall Shard
+    if (cost > 0) setStarlightGems((s) => s - cost);
+    if (isFreeFirst) setHasDoneFirstFreePull(true);
+
+    // 1 Pull = 1 Starfall Shard
     setStarfallShards((sh) => sh + count);
     sfx.play('gacha');
 
     const results: { name: string; rarity: string; note: string }[] = [];
+    const revealCards: GachaRevealCard[] = [];
+    const bonusRelics: GearItem[] = [];
     let curPity = gachaPity;
     const updatedProg = { ...heroProgress };
-    let saltGained = 0;
+
+    const ssrPool = RESONATORS.filter((r) => r.rarity === 'SSR');
+    const srPool = RESONATORS.filter((r) => r.rarity === 'SR');
+    const rPool = RESONATORS.filter((r) => r.rarity === 'R');
 
     for (let i = 0; i < count; i++) {
+      // Tutorial First Pull Guarantee: 100% SR Unlock!
+      if (isFreeFirst && i === 0) {
+        const lockedSr = srPool.filter((r) => !updatedProg[r.id]?.unlocked);
+        const pickSr =
+          lockedSr.length > 0
+            ? lockedSr[Math.floor(Math.random() * lockedSr.length)]
+            : srPool[Math.floor(Math.random() * srPool.length)];
+        const p = updatedProg[pickSr.id];
+        const wasLocked = !p.unlocked;
+        updatedProg[pickSr.id] = {
+          ...p,
+          unlocked: true,
+          stars: wasLocked ? 2 : Math.min(5, p.stars + 1),
+          level: wasLocked ? p.level : Math.min(100, p.level + 3),
+        };
+        const noteText = wasLocked ? 'NEW SR UNLOCKED! (Tutorial 100% SR)' : `Promoted to ${updatedProg[pickSr.id].stars}★!`;
+        results.push({ name: pickSr.name, rarity: 'SR', note: noteText });
+        revealCards.push({
+          uid: `PULL_${Date.now()}_${i}`,
+          hero: pickSr,
+          actualRarity: 'SR',
+          displayRarity: 'SR',
+          isFakeOut: false,
+          flipped: false,
+          shattering: false,
+          note: noteText,
+        });
+        continue;
+      }
+
       curPity += 1;
       const roll = Math.random();
       const isSSR = curPity >= 30 || roll < 0.08;
       if (isSSR) {
         curPity = 0;
-        const ssrPool = RESONATORS.filter((r) => r.rarity === 'SSR');
         const wishlistPool = ssrPool.filter((r) => wishlistIds.includes(r.id));
         const nonWishlistPool = ssrPool.filter((r) => !wishlistIds.includes(r.id));
 
@@ -2316,40 +2575,114 @@ export default function App() {
         }
 
         const p = updatedProg[picked.id];
-        if (p.stars < 5) {
+        const wasLocked = !p.unlocked;
+        let noteText = '';
+        if (wasLocked) {
+          updatedProg[picked.id] = { ...p, unlocked: true, stars: 3 };
+          noteText = 'NEW SSR SOVEREIGN UNLOCKED!';
+        } else if (p.stars < 5) {
           updatedProg[picked.id] = { ...p, stars: p.stars + 1 };
-          results.push({ name: picked.name, rarity: 'SSR', note: `Promoted to ${p.stars + 1}★!` });
+          noteText = `Promoted to ${p.stars + 1}★!`;
         } else {
           updatedProg[picked.id] = { ...p, level: Math.min(100, p.level + 5) };
-          results.push({ name: picked.name, rarity: 'SSR', note: 'Max 5★ Resonance (+5 Lv)' });
+          noteText = 'Max 5★ Resonance (+5 Lv)';
         }
+        results.push({ name: picked.name, rarity: 'SSR', note: noteText });
+
+        // 25% Fake-Out Shatter Chance (SR Purple Aura -> Shatters into Gold SSR!)
+        const isFakeOut = Math.random() < 0.25;
+        revealCards.push({
+          uid: `PULL_${Date.now()}_${i}`,
+          hero: picked,
+          actualRarity: 'SSR',
+          displayRarity: isFakeOut ? 'SR' : 'SSR',
+          isFakeOut,
+          flipped: false,
+          shattering: false,
+          note: noteText,
+        });
       } else if (roll < 0.4) {
-        const srPool = RESONATORS.filter((r) => r.rarity === 'SR');
         const picked = srPool[Math.floor(Math.random() * srPool.length)] || RESONATORS[0];
         const p = updatedProg[picked.id];
-        updatedProg[picked.id] = { ...p, level: Math.min(100, p.level + 2) };
-        results.push({
-          name: `${picked.name} Echo`,
-          rarity: 'SR',
-          note: '+2 Resonator Lv & +1 Starfall Shard',
+        const wasLocked = !p.unlocked;
+        let noteText = '';
+        if (wasLocked) {
+          updatedProg[picked.id] = { ...p, unlocked: true, stars: 2 };
+          noteText = 'NEW SR RESONATOR UNLOCKED!';
+        } else if (p.stars < 5) {
+          updatedProg[picked.id] = { ...p, stars: p.stars + 1, level: Math.min(100, p.level + 2) };
+          noteText = `Promoted to ${p.stars + 1}★ (+2 Lv)!`;
+        } else {
+          updatedProg[picked.id] = { ...p, level: Math.min(100, p.level + 4) };
+          noteText = '+4 Resonator Lv & +1 Starfall Shard';
+        }
+        results.push({ name: picked.name, rarity: 'SR', note: noteText });
+        revealCards.push({
+          uid: `PULL_${Date.now()}_${i}`,
+          hero: picked,
+          actualRarity: 'SR',
+          displayRarity: 'SR',
+          isFakeOut: false,
+          flipped: false,
+          shattering: false,
+          note: noteText,
         });
       } else {
-        saltGained += 1;
+        // Normal Roll: Drops an R Resonator Card (upgrades R stars/levels) + a 3★–4★ Relic
+        const pickedR = rPool[Math.floor(Math.random() * rPool.length)] || RESONATORS[RESONATORS.length - 1];
+        const p = updatedProg[pickedR.id];
+        const nextStars = p.stars < 5 ? p.stars + 1 : p.stars;
+        updatedProg[pickedR.id] = {
+          ...p,
+          unlocked: true,
+          stars: nextStars,
+          level: Math.min(100, p.level + 2),
+        };
+        const randSet = EQUIPMENT_SETS[Math.floor(Math.random() * EQUIPMENT_SETS.length)];
+        const slots: GearSlot[] = ['Weapon', 'Armor', 'Ring I', 'Ring II'];
+        const randSlot = slots[Math.floor(Math.random() * slots.length)];
+        const isFourStar = Math.random() < 0.45;
+        const relicName = `${isFourStar ? '4★' : '3★'} ${randSet.displayName} ${randSlot}`;
+        bonusRelics.push({
+          id: `G_PULL_${Date.now()}_${i}_${Math.floor(Math.random() * 999)}`,
+          name: relicName,
+          slot: randSlot,
+          set: randSet.id,
+          level: isFourStar ? 1 : 0,
+          failStackCount: 0,
+          mainStatKey: randSlot === 'Weapon' ? 'ATK%' : randSlot === 'Armor' ? 'DEF%' : 'CRIT RATE%',
+          baseMainValue: isFourStar ? 10 : 8,
+          baseFlatStat: randSlot === 'Weapon' ? 125 : randSlot === 'Armor' ? 880 : undefined,
+          substats: [{ stat: 'ATK%', value: 4 }],
+        });
+        const noteText = `${p.stars < 5 ? `Promoted to ${nextStars}★` : '+2 Lv'} · +${relicName}`;
         results.push({
-          name: '🧂 Salt Crystal & 4★ Relic Dust',
-          rarity: 'SALT',
-          note: '+1 Salt Crystal · +1,200 Gold',
+          name: pickedR.name,
+          rarity: 'R',
+          note: noteText,
+        });
+        revealCards.push({
+          uid: `PULL_${Date.now()}_${i}`,
+          hero: pickedR,
+          actualRarity: 'R',
+          displayRarity: 'R',
+          isFakeOut: false,
+          flipped: false,
+          shattering: false,
+          note: noteText,
+          bonusRelicName: relicName,
         });
       }
     }
 
-    if (saltGained > 0) {
-      setSaltCrystals((sc) => sc + saltGained);
+    if (bonusRelics.length > 0) {
+      setGearInventory((prev) => [...bonusRelics, ...prev]);
     }
-    setGold((g) => g + count * 500 + saltGained * 700);
+    setGold((g) => g + count * 500);
     setGachaPity(curPity);
     setHeroProgress(updatedProg);
     setRecentPulls(results);
+    setGachaRevealCards(revealCards);
   };
 
   const handleChronoRewind = () => {
@@ -2460,22 +2793,35 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#05070f] text-slate-100 select-none">
-      {/* TOP BAR: Spire Floor, Logo, Currencies (Gold, Starlight, Time Shards) & Pause/Audio */}
-      <header className="flex items-center justify-between gap-4 px-6 py-2 bg-[#0a0d18] border-b border-slate-800/90 text-xs font-mono tabular-nums shrink-0">
-        <div className="flex items-center gap-3">
+      {/* TOP BAR: Spire Floor, Zone Name, Primary Sanctuaries & Merchant Hub Buttons, Currencies & Audio */}
+      <header className="flex items-center justify-between gap-3 px-4 py-2 bg-[#0a0d18] border-b border-slate-800/90 text-xs font-mono tabular-nums shrink-0">
+        <div className="flex items-center gap-2.5">
           <span className="text-base font-bold tracking-wider text-amber-300 font-display whitespace-nowrap">
             Chrono Spire
           </span>
           <span className="text-slate-600">|</span>
           <span className="text-slate-300">
-            Spire Floor: <strong className="text-amber-300">F{floor}</strong>{' '}
+            Floor <strong className="text-amber-300">F{floor}</strong>{' '}
             <span className="text-slate-400">
-              ({floor % 5 === 0 ? 'Old God Boss Chamber' : `Void Corridor · Boss at F${Math.ceil(floor / 5) * 5}`})
+              ({ZONE_PARALLAX_ASSETS[Math.min(4, Math.floor((floor - 1) / 20))]?.name || 'Void Corridor'} ·{' '}
+              {floor % 5 === 0 ? 'Old God Boss' : `Boss at F${Math.ceil(floor / 5) * 5}`})
             </span>
           </span>
+          <button
+            onClick={() => setSanctuariesModalOpen(true)}
+            className="ml-1 px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/70 text-amber-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm"
+          >
+            [🏰 Sanctuaries &amp; Challenges]
+          </button>
+          <button
+            onClick={() => setMerchantHubOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/70 text-rose-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm"
+          >
+            [🛒 Merchant Hub]
+          </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <span>
             Gold: <strong className="text-amber-300">{gold.toLocaleString()}</strong>
           </span>
@@ -2485,11 +2831,11 @@ export default function App() {
           </span>
           <span aria-hidden="true">·</span>
           <span>
-            Starfall Shards: <strong className="text-rose-300">{starfallShards}</strong>
+            Shards: <strong className="text-rose-300">{starfallShards}</strong>
           </span>
           <span aria-hidden="true">·</span>
           <span>
-            Time Shards: <strong className="text-purple-300">{timeShards.toLocaleString()}</strong>
+            Time: <strong className="text-purple-300">{timeShards.toLocaleString()}</strong>
           </span>
           <span aria-hidden="true">·</span>
           <button
@@ -2532,8 +2878,8 @@ export default function App() {
             {bgmStatus === 'LYRIA_ACTIVE'
               ? `🎵 Lyria 3 (${bgmTheme === 'BOSS' ? 'Boss' : 'Spire'})`
               : bgmStatus === 'LYRIA_LOADING'
-              ? '⏳ Lyria 3 Synth...'
-              : '🎵 Generate Lyria BGM'}
+              ? '⏳ Lyria 3...'
+              : '🎵 Lyria BGM'}
           </button>
           <button
             onClick={() => {
@@ -2543,7 +2889,7 @@ export default function App() {
             }}
             className="px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white cursor-pointer whitespace-nowrap"
           >
-            {muted ? '🔇 Muted' : '🔊 Audio'}
+            {muted ? '🔇' : '🔊'}
           </button>
           <button
             onClick={() => setShellState((s) => (s === 'PAUSED' ? 'PLAYING' : 'PAUSED'))}
@@ -2561,65 +2907,50 @@ export default function App() {
            ============================================================ */}
         {activeTab === 'BATTLE' && (
           <div className="flex-1 min-h-0 flex flex-col justify-between relative bg-[#05070f]">
-            {/* PINNED TOP-RIGHT DUNGEON / RAID / ARENA ICON DOCK (Always visible in Combat Screen) */}
+            {/* PINNED TOP-RIGHT ELEMENTAL WHEEL + SANCTUARIES & MERCHANT HUB DOCK */}
             <div className="absolute top-2 right-3 z-40 flex items-center gap-2">
-              {(
-                [
-                  {
-                    id: 'DOMAINS' as const,
-                    icon: '🏰',
-                    label: 'Dungeon',
-                    sub: `${weeklyKeys}/15 Keys`,
-                    accent: 'border-amber-400 text-amber-300 bg-amber-500/20',
-                  },
-                  {
-                    id: 'GUILD_RAID' as const,
-                    icon: '🐉',
-                    label: 'Guild Raid',
-                    sub: `${guildAttempts}/3 · ${guildMedals}🏅`,
-                    accent: 'border-rose-400 text-rose-300 bg-rose-500/20',
-                  },
-                  {
-                    id: 'ARENA' as const,
-                    icon: '⚔️',
-                    label: '1v1 Arena',
-                    sub: `${arenaRankPts} RP`,
-                    accent: 'border-sky-400 text-sky-300 bg-sky-500/20',
-                  },
-                ]
-              ).map((m) => {
-                const active = battleSubMode === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      if (active) {
-                        setBattleSubMode('SPIRE');
-                        initFloorWave(floor, false, 'SPIRE');
-                      } else {
-                        setBattleSubMode(m.id);
-                        if (m.id === 'GUILD_RAID' || m.id === 'ARENA') {
-                          initFloorWave(floor, false, m.id);
-                        }
-                      }
-                    }}
-                    title={active ? `Return to Spire Floor F${floor}` : `Enter ${m.label}`}
-                    className={`w-18 py-1.5 px-2 rounded-xl border backdrop-blur-sm flex flex-col items-center justify-center gap-0.5 shadow-xl transition-transform active:scale-95 cursor-pointer ${
-                      active
-                        ? `${m.accent} ring-1 ring-amber-400/50 font-bold`
-                        : 'bg-[#0a0d18]/90 border-slate-800 text-slate-300 hover:border-slate-600 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-base leading-none">{m.icon}</span>
-                    <span className="text-[10px] font-display font-bold tracking-tight whitespace-nowrap">
-                      {m.label}
-                    </span>
-                    <span className="text-[8px] font-mono text-slate-400 tabular-nums whitespace-nowrap">
-                      {m.sub}
-                    </span>
-                  </button>
-                );
-              })}
+              <ElementalWheelBadge
+                activeBossElement={
+                  hudState.bossParts.find((b) => b.alive)?.element ||
+                  hudState.bossParts[0]?.element
+                }
+                compact
+              />
+              {battleSubMode !== 'SPIRE' && (
+                <button
+                  onClick={() => {
+                    setBattleSubMode('SPIRE');
+                    initFloorWave(floor, false, 'SPIRE');
+                  }}
+                  className="px-2.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-bold text-[10px] shadow-xl cursor-pointer whitespace-nowrap"
+                >
+                  ↩ Return to Spire F{floor}
+                </button>
+              )}
+              <button
+                onClick={() => setSanctuariesModalOpen(true)}
+                className="py-1.5 px-2.5 rounded-xl border border-amber-400/70 bg-[#0a0d18]/90 hover:bg-amber-500/20 text-amber-300 backdrop-blur-sm flex flex-col items-center justify-center gap-0.5 shadow-xl cursor-pointer"
+              >
+                <span className="text-sm leading-none">🏰</span>
+                <span className="text-[10px] font-display font-bold tracking-tight whitespace-nowrap">
+                  Sanctuaries
+                </span>
+                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap">
+                  {weeklyKeys}/15🗝️ · {guildAttempts}/3🐉
+                </span>
+              </button>
+              <button
+                onClick={() => setMerchantHubOpen(true)}
+                className="py-1.5 px-2.5 rounded-xl border border-rose-400/70 bg-[#0a0d18]/90 hover:bg-rose-500/20 text-rose-200 backdrop-blur-sm flex flex-col items-center justify-center gap-0.5 shadow-xl cursor-pointer"
+              >
+                <span className="text-sm leading-none">🛒</span>
+                <span className="text-[10px] font-display font-bold tracking-tight whitespace-nowrap">
+                  Merchant Hub
+                </span>
+                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap">
+                  {starfallShards}🌟 · {arenaTokens}🏆 · {guildMedals}🎖️
+                </span>
+              </button>
             </div>
 
             {battleSubMode === 'DOMAINS' ? (
@@ -3073,10 +3404,10 @@ export default function App() {
                         <CPInfoTooltip title="How Squad CP Works" formula={SQUAD_CP_FORMULA} />
                       </div>
                       <div
-                        title="Elemental Counter Cycle: Fire > Wind > Electro > Cryo > Fire (+30% DMG, +25% Break Power, +15% Crit Rate | Disadvantage: -20% DMG, -15% Break Power). Light ↔ Dark deal mutual +30% DMG."
+                        title="Natural Elemental Counter Cycle: Fire > Cryo > Wind > Electro > Fire (+30% DMG, +25% Break Power, +15% Crit Rate | Disadvantage: -20% DMG, -15% Break Power). Light ↔ Dark deal mutual +30% DMG."
                         className="px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-700/90 text-[10px] font-mono text-slate-200 inline-flex items-center gap-1"
                       >
-                        <span>🔥 &gt; 🌪️ &gt; ⚡ &gt; ❄️ &gt; 🔥 · ☀️ ↔ 🌑</span>
+                        <span>🔥 &gt; ❄️ &gt; 🌪️ &gt; ⚡ &gt; 🔥 · ☀️ ↔ 🌑</span>
                       </div>
                       {activeDomainChallenge && (
                         <div className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-400/70 text-[11px] font-mono font-bold text-rose-200">
@@ -3466,19 +3797,19 @@ export default function App() {
             {!heroDetailMode ? (
               /* MODE A: ROSTER PORTRAIT GRID (LEFT 60%) & ACTIVE SQUAD FORMATION (RIGHT 40%) */
               <div className="flex-1 min-h-0 grid grid-cols-12 gap-4 overflow-hidden">
-                {/* LEFT 60% (7 Cols): Portrait Card Grid (3 Columns) */}
+                {/* LEFT 60% (7 Cols): Portrait Card Grid (4 Columns) */}
                 <div className="col-span-12 lg:col-span-7 bg-[#0a0d18] border border-slate-800 rounded-xl p-3.5 flex flex-col min-h-0">
                   <div className="flex items-center justify-between mb-2.5 shrink-0">
                     <div>
                       <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                        Resonator Roster · 18 Heroes (12 SSR · 6 SR)
+                        Resonator Roster · 23 Heroes (12 SSR · 6 SR · 5 Starter R)
                       </h2>
                       <p className="text-[11px] text-slate-400">
-                        Click any Resonator card to open 3-Column Visual Detail &amp; Gambit Priority
+                        Starter R units are unlocked · Summon or Exchange to unlock SR &amp; SSR Sovereigns
                       </p>
                     </div>
                     <span className="text-xs font-mono text-amber-300">
-                      Deployed: {partyIds.length} / 5
+                      Unlocked: {RESONATORS.filter((r) => heroProgress[r.id]?.unlocked).length}/23 · Deployed: {partyIds.length}/5
                     </span>
                   </div>
 
@@ -3486,6 +3817,7 @@ export default function App() {
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
                       {RESONATORS.map((r) => {
                         const p = heroProgress[r.id];
+                        const isUnlocked = Boolean(p?.unlocked);
                         const inParty = partyIds.includes(r.id);
                         const elMeta = ELEMENT_META[r.element];
                         const rarityMeta = RARITY_BADGE_META[r.rarity] || RARITY_BADGE_META.N;
@@ -3513,8 +3845,10 @@ export default function App() {
                               setHeroDetailMode(true);
                             }}
                             style={{
-                              borderColor: inParty ? '#fbbf24' : elMeta.color,
-                              background: `linear-gradient(180deg, ${elMeta.color}38 0%, #0b1020 58%, #040711 100%)`,
+                              borderColor: inParty ? '#fbbf24' : isUnlocked ? elMeta.color : '#334155',
+                              background: isUnlocked
+                                ? `linear-gradient(180deg, ${elMeta.color}38 0%, #0b1020 58%, #040711 100%)`
+                                : 'linear-gradient(180deg, #0f172a 0%, #05070f 100%)',
                             }}
                             className={`group relative w-full aspect-[3/4] rounded-xl border-2 transition-all cursor-pointer overflow-hidden select-none ${
                               inParty
@@ -3525,8 +3859,12 @@ export default function App() {
                             {/* IN-FLOW 3:4 SPACER TO GUARANTEE NON-OVERLAPPING GRID ROW TRACK HEIGHT */}
                             <div className="w-full pt-[133.33%] pointer-events-none" />
 
-                            {/* BUST-UP PORTRAIT FULL CENTER (Waist to Head & Weapon) */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                            {/* BUST-UP PORTRAIT FULL CENTER (Dark Silhouette if Locked) */}
+                            <div
+                              className={`absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden ${
+                                isUnlocked ? '' : 'brightness-[0.14] contrast-150 grayscale'
+                              }`}
+                            >
                               <ResonatorSplashArt
                                 hero={r}
                                 className="w-full h-full object-cover scale-[1.38] translate-y-3 transition-transform duration-300 group-hover:scale-[1.44]"
@@ -3555,54 +3893,66 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* TOP-CENTER: GOLDEN STARS ROW (2★ to 5★) */}
+                            {/* TOP-CENTER: GOLDEN STARS ROW (1★ to 5★) */}
                             <div className="absolute top-2 inset-x-0 z-20 flex items-center justify-center pointer-events-none">
                               <span className="text-xs font-mono text-amber-300 tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)]">
                                 {'★'.repeat(p.stars)}
                               </span>
                             </div>
 
-                            {/* TOP-RIGHT: QUICK DEPLOY / SQUAD TOGGLE BUTTON */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (inParty) {
-                                  if (partyIds.length <= 1) return;
-                                  setPartyIds((ids) => ids.filter((id) => id !== r.id));
-                                } else if (partyIds.length < 5) {
-                                  setPartyIds((ids) => [...ids, r.id]);
-                                } else {
-                                  setPartyIds((ids) => [...ids.slice(0, 4), r.id]);
-                                }
-                              }}
-                              title={inParty ? 'Remove from Squad' : 'Deploy to Squad'}
-                              className={`absolute top-2 right-2 z-30 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors cursor-pointer ${
-                                inParty
-                                  ? 'bg-amber-400 text-slate-950 border-amber-200'
-                                  : 'bg-slate-950/85 text-slate-300 border-slate-700 hover:border-amber-400 hover:text-white'
-                              }`}
-                            >
-                              {inParty ? `#${partyIds.indexOf(r.id) + 1}` : '+'}
-                            </button>
+                            {/* TOP-RIGHT: QUICK DEPLOY OR LOCKED BADGE */}
+                            {isUnlocked ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (inParty) {
+                                    if (partyIds.length <= 1) return;
+                                    setPartyIds((ids) => ids.filter((id) => id !== r.id));
+                                  } else if (partyIds.length < 5) {
+                                    setPartyIds((ids) => [...ids, r.id]);
+                                  } else {
+                                    setPartyIds((ids) => [...ids.slice(0, 4), r.id]);
+                                  }
+                                }}
+                                title={inParty ? 'Remove from Squad' : 'Deploy to Squad'}
+                                className={`absolute top-2 right-2 z-30 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors cursor-pointer ${
+                                  inParty
+                                    ? 'bg-amber-400 text-slate-950 border-amber-200'
+                                    : 'bg-slate-950/85 text-slate-300 border-slate-700 hover:border-amber-400 hover:text-white'
+                                }`}
+                              >
+                                {inParty ? `#${partyIds.indexOf(r.id) + 1}` : '+'}
+                              </button>
+                            ) : (
+                              <span className="absolute top-2 right-2 z-30 px-1.5 py-0.5 rounded bg-slate-950/90 border border-slate-700 text-[9px] font-mono font-bold text-slate-400">
+                                🔒
+                              </span>
+                            )}
 
-                            {/* CHEST CENTER: HORIZONTAL "SELECTED" BANNER SASH (Only when inParty) */}
-                            {inParty && (
+                            {/* CHEST CENTER: HORIZONTAL "SELECTED" OR "LOCKED" BANNER SASH */}
+                            {inParty ? (
                               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 z-20 bg-gradient-to-r from-slate-950/80 via-amber-400/95 to-slate-950/80 border-y border-amber-200 py-0.5 flex items-center justify-center shadow-lg pointer-events-none">
                                 <span className="text-[10px] font-mono font-extrabold tracking-[0.22em] text-slate-950 uppercase">
                                   SELECTED
                                 </span>
                               </div>
-                            )}
+                            ) : !isUnlocked ? (
+                              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 z-20 bg-slate-950/85 border-y border-slate-700/80 py-0.5 flex items-center justify-center pointer-events-none">
+                                <span className="text-[9px] font-mono font-bold tracking-[0.18em] text-slate-400 uppercase">
+                                  🔒 LOCKED
+                                </span>
+                              </div>
+                            ) : null}
 
-                            {/* BOTTOM DARK GRADIENT OVERLAY: Left Hero CP (No Tooltip) + Right LV + Center Bold Uppercase Name + Elemental Title */}
+                            {/* BOTTOM DARK GRADIENT OVERLAY */}
                             <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pt-7 pb-2 px-2.5 flex flex-col items-center text-center">
                               <div className="w-full flex items-center justify-between -mb-0.5">
                                 <span className="text-[10px] font-mono font-extrabold text-amber-300 drop-shadow">
                                   ⚡ CP {(heroCpMap[r.id] || 0).toLocaleString()}
                                 </span>
                                 <span className="text-[10px] font-mono font-extrabold text-white drop-shadow">
-                                  LV {p.level}
+                                  {isUnlocked ? `LV ${p.level}` : 'LOCKED'}
                                 </span>
                               </div>
                               <div className="w-full text-xs font-extrabold text-white tracking-wide uppercase truncate font-display drop-shadow">
@@ -3610,7 +3960,7 @@ export default function App() {
                               </div>
                               <div
                                 className="w-full text-[10px] font-semibold truncate"
-                                style={{ color: elMeta.color }}
+                                style={{ color: isUnlocked ? elMeta.color : '#64748b' }}
                               >
                                 {r.title}
                               </div>
@@ -3634,13 +3984,22 @@ export default function App() {
                           🔒 Pre-Battle Setup (Locked on Active Battlefield)
                         </span>
                       </div>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/50 text-amber-300 font-mono font-bold text-[11px]">
-                          ⚔️ SQUAD CP: {squadCP.toLocaleString()}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-400">
-                          Mastery Lv.{formationLevel}/10
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <ElementalWheelBadge
+                          activeBossElement={
+                            hudState.bossParts.find((b) => b.alive)?.element ||
+                            hudState.bossParts[0]?.element
+                          }
+                          compact
+                        />
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/50 text-amber-300 font-mono font-bold text-[11px]">
+                            ⚔️ SQUAD CP: {squadCP.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            Mastery Lv.{formationLevel}/10
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -3682,7 +4041,6 @@ export default function App() {
                                         compact
                                         className="w-11 h-11 -mb-2.5 relative z-10 group-hover:scale-110 transition-transform"
                                       />
-                                      {/* Elemental Ring Pedestal */}
                                       <div
                                         style={{
                                           borderColor: elColor,
@@ -3727,7 +4085,6 @@ export default function App() {
                                         compact
                                         className="w-11 h-11 -mb-2.5 relative z-10 group-hover:scale-110 transition-transform"
                                       />
-                                      {/* Elemental Ring Pedestal */}
                                       <div
                                         style={{
                                           borderColor: elColor,
@@ -3798,13 +4155,20 @@ export default function App() {
 
                     <button
                       onClick={() => {
-                        setPartyIds(['H04', 'H01', 'H07', 'H10', 'H13']);
+                        const unlockedHeroes = RESONATORS.filter((r) => heroProgress[r.id]?.unlocked);
+                        const sorted = [...unlockedHeroes].sort(
+                          (a, b) => (heroCpMap[b.id] || 0) - (heroCpMap[a.id] || 0)
+                        );
+                        const top5 = sorted.slice(0, 5);
+                        const frontPref = top5.filter((r) => r.recommendedRow === 'Front').map((r) => r.id);
+                        const backPref = top5.filter((r) => r.recommendedRow !== 'Front').map((r) => r.id);
+                        setPartyIds([...frontPref, ...backPref].slice(0, 5));
                         setFormationId('BALANCED');
                         sfx.play('gacha');
                       }}
                       className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-500/20 cursor-pointer"
                     >
-                      [AUTO-DEPLOY BEST COMBO]
+                      [AUTO-DEPLOY BEST COMBO (UNLOCKED)]
                     </button>
                   </div>
                 </div>
@@ -3820,26 +4184,37 @@ export default function App() {
                     ← Back to Roster &amp; Formation
                   </button>
                   <div className="flex items-center gap-2">
-                    <button
-                      disabled={selectedHeroProg.level >= 100 || gold < selectedHeroProg.level * 120}
-                      onClick={() => handleLevelUpHero(selectedHeroData.id, 5)}
-                      className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
-                    >
-                      {selectedHeroProg.level >= 100
-                        ? 'Lv.100 MAX'
-                        : `Level Up +5 (${(selectedHeroProg.level * 120).toLocaleString()}G)`}
-                    </button>
-                    <button
-                      disabled={
-                        selectedHeroProg.stars >= 5 || starlightGems < (selectedHeroProg.stars - 1) * 400
-                      }
-                      onClick={() => handleAscendStar(selectedHeroData.id)}
-                      className="px-3.5 py-1.5 bg-sky-400 hover:bg-sky-300 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
-                    >
-                      {selectedHeroProg.stars >= 5
-                        ? '5★ MAX'
-                        : `Ascend ${selectedHeroProg.stars + 1}★ (${(selectedHeroProg.stars - 1) * 400} Gems)`}
-                    </button>
+                    {!selectedHeroProg.unlocked ? (
+                      <button
+                        onClick={() => setActiveTab('SUMMON')}
+                        className="px-4 py-1.5 rounded-lg bg-purple-500/25 border border-purple-400 text-purple-200 font-bold text-xs cursor-pointer"
+                      >
+                        🔒 LOCKED — Go to Summon / Starfall Exchange to Unlock
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          disabled={selectedHeroProg.level >= 100 || gold < selectedHeroProg.level * 120}
+                          onClick={() => handleLevelUpHero(selectedHeroData.id, 5)}
+                          className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
+                        >
+                          {selectedHeroProg.level >= 100
+                            ? 'Lv.100 MAX'
+                            : `Level Up +5 (${(selectedHeroProg.level * 120).toLocaleString()}G)`}
+                        </button>
+                        <button
+                          disabled={
+                            selectedHeroProg.stars >= 5 || starlightGems < Math.max(1, selectedHeroProg.stars) * 400
+                          }
+                          onClick={() => handleAscendStar(selectedHeroData.id)}
+                          className="px-3.5 py-1.5 bg-sky-400 hover:bg-sky-300 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
+                        >
+                          {selectedHeroProg.stars >= 5
+                            ? '5★ MAX'
+                            : `Ascend ${selectedHeroProg.stars + 1}★ (${Math.max(1, selectedHeroProg.stars) * 400} Gems)`}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -4661,7 +5036,10 @@ export default function App() {
 
               <div className="flex items-center gap-2.5">
                 <button
-                  onClick={() => setExchangeShopOpen(true)}
+                  onClick={() => {
+                    setMerchantTab('STARFALL');
+                    setMerchantHubOpen(true);
+                  }}
                   title={`Starfall Exchange Shop (${starfallShards} Shards)`}
                   className="relative w-10 h-10 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 border border-rose-400 text-rose-200 flex items-center justify-center shadow-md transition-transform active:scale-95 cursor-pointer"
                 >
@@ -4670,13 +5048,22 @@ export default function App() {
                     {starfallShards}
                   </span>
                 </button>
-                <button
-                  disabled={starlightGems < 160}
-                  onClick={() => handleSummonPull(1)}
-                  className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 disabled:opacity-40 text-slate-100 font-bold text-xs tracking-wider uppercase cursor-pointer"
-                >
-                  [1x SUMMON] (160 💎)
-                </button>
+                {!hasDoneFirstFreePull ? (
+                  <button
+                    onClick={() => handleSummonPull(1)}
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 via-fuchsia-500 to-amber-400 hover:brightness-110 text-slate-950 font-extrabold text-xs tracking-wider uppercase shadow-lg shadow-purple-500/30 ring-2 ring-amber-300/80 cursor-pointer animate-pulse"
+                  >
+                    [✨ FREE FIRST SUMMON (100% SR)] (0 💎)
+                  </button>
+                ) : (
+                  <button
+                    disabled={starlightGems < 160}
+                    onClick={() => handleSummonPull(1)}
+                    className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 disabled:opacity-40 text-slate-100 font-bold text-xs tracking-wider uppercase cursor-pointer"
+                  >
+                    [1x SUMMON] (160 💎)
+                  </button>
+                )}
                 <button
                   disabled={starlightGems < 1600}
                   onClick={() => handleSummonPull(10)}
@@ -5891,60 +6278,1176 @@ export default function App() {
         })}
       </nav>
 
-      {/* ROGUELITE 22 MAJOR ARCANA TAROT MODAL (EVERY 5 FLOORS + [AUTO CARD: 6s]) */}
+      {/* ROGUELITE 22 MAJOR ARCANA TAROT 3-CARD 3D FLIP MODAL (EVERY 5 FLOORS) */}
       {blessingChoices && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0a0d18] border-2 border-amber-500/50 rounded-2xl max-w-4xl w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
                 <div className="text-xs font-mono text-amber-300">
-                  Every 5th Floor Boss Cleared · 22 Major Arcana Sanctuary
+                  Every 5th Floor Boss Cleared · 22 Major Arcana Sanctuary · Click Face-Down Card to Flip!
                 </div>
                 <h2 className="text-xl font-bold text-white font-display">
                   Select 1 Major Arcana Tarot Blessing (Tier I → II → III)
                 </h2>
               </div>
-              <span className="px-3 py-1.5 rounded-lg bg-amber-400/20 border border-amber-400 text-xs font-mono font-bold text-amber-300">
-                [AUTO CARD: {tarotAutoTimer.toFixed(1)}s]
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setTarotFlipped([true, true, true]);
+                    sfx.play('gacha');
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                >
+                  [✨ REVEAL ALL 3 CARDS]
+                </button>
+                <span className="px-3 py-1.5 rounded-lg bg-amber-400/20 border border-amber-400 text-xs font-mono font-bold text-amber-300">
+                  [AUTO CARD: {tarotAutoTimer.toFixed(1)}s]
+                </span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {blessingChoices.map((card, idx) => {
                 const curTier = blessings[card.id] || 0;
                 const nextTier = Math.min(3, curTier + 1);
+                const isFlipped = tarotFlipped[idx];
                 return (
                   <div
                     key={card.id}
                     onClick={() => {
+                      if (!isFlipped) {
+                        setTarotFlipped((prev) => {
+                          const next: [boolean, boolean, boolean] = [prev[0], prev[1], prev[2]];
+                          next[idx] = true;
+                          return next;
+                        });
+                        sfx.play('hit');
+                        return;
+                      }
                       setBlessings((prev) => ({ ...prev, [card.id]: nextTier }));
                       setBlessingChoices(null);
                       sfx.play('gacha');
                     }}
-                    className={`p-4 bg-slate-950 border rounded-xl flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-0.5 space-y-3 ${
-                      idx === 0 ? 'border-amber-400/80 ring-1 ring-amber-400/30' : 'border-slate-800 hover:border-amber-400'
+                    className={`group relative rounded-2xl border-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between p-4 min-h-[340px] ${
+                      !isFlipped
+                        ? 'bg-gradient-to-b from-[#130d26] to-[#070a14] border-purple-400/60 hover:border-amber-400 hover:-translate-y-1 shadow-lg shadow-purple-500/15'
+                        : idx === 0
+                        ? 'bg-slate-950 border-amber-400 ring-2 ring-amber-400/30 hover:-translate-y-1 shadow-xl shadow-amber-500/20'
+                        : 'bg-slate-950 border-slate-700 hover:border-amber-400 hover:-translate-y-1'
                     }`}
                   >
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="text-amber-300">{card.id}</span>
-                        <span className="text-slate-400">
-                          {card.rarity} · Tier {nextTier}/3
+                    {!isFlipped ? (
+                      <div className="flex-1 flex flex-col items-center justify-between py-2">
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-purple-300">
+                          Mystery Major Arcana #{idx + 1}
                         </span>
+                        <div className="my-2 p-2 rounded-xl border border-amber-400/40 bg-slate-950/80 shadow-[0_0_25px_rgba(168,85,247,0.35)] group-hover:scale-105 transition-transform">
+                          <PixelTarotCardBackCanvas className="w-36 h-44" />
+                        </div>
+                        <div className="w-full py-2 text-center rounded-lg bg-purple-500/20 border border-purple-400/50 text-xs font-mono font-bold text-amber-200">
+                          [🃏 Click to Flip Card]
+                        </div>
                       </div>
-                      <div className="flex justify-center py-1">
-                        <PixelTarotCardCanvas arcanaId={card.id} className="w-24 h-30" />
-                      </div>
-                      <h3 className="text-sm font-bold text-white font-display text-center">{card.name}</h3>
-                      <p className="text-xs text-slate-300 leading-relaxed text-center">{card.desc}</p>
-                    </div>
-                    <div className="py-1.5 text-center bg-amber-400/15 text-amber-300 text-xs font-semibold rounded">
-                      {idx === 0 ? `Select Tarot (Auto in ${tarotAutoTimer.toFixed(0)}s)` : 'Select Tarot Blessing'}
-                    </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2.5">
+                          <div className="flex items-center justify-between text-xs font-mono">
+                            <span className="text-amber-300 font-bold">{card.id}</span>
+                            <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/40 text-amber-200">
+                              {card.rarity} · Tier {nextTier}/3
+                            </span>
+                          </div>
+                          <div className="flex justify-center py-1">
+                            <div className="p-1.5 rounded-xl bg-slate-900 border border-amber-400/50 shadow-inner">
+                              <PixelTarotCardCanvas arcanaId={card.id} className="w-36 h-44" />
+                            </div>
+                          </div>
+                          <h3 className="text-base font-bold text-white font-display text-center">
+                            {card.name}
+                          </h3>
+                          <p className="text-xs text-slate-300 leading-relaxed text-center bg-slate-900/90 border border-slate-800 rounded-lg p-2">
+                            {card.desc}
+                          </p>
+                        </div>
+                        <div className="mt-3 py-2 text-center bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg">
+                          {idx === 0
+                            ? `[Select Tarot · Auto in ${tarotAutoTimer.toFixed(0)}s]`
+                            : '[Select Tarot Blessing]'}
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* STARFALL CARD REVEAL MODAL & SR ➔ SSR SHATTER FAKE-OUT (25% CHANCE) */}
+      {gachaRevealCards && (
+        <div className="fixed inset-0 z-50 bg-slate-950/92 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-6xl w-full bg-[#090d1a] border-2 border-amber-400/60 rounded-2xl p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="text-xs font-mono text-amber-300 uppercase tracking-wider">
+                  Starfall Altar Summon · Blue = R · Purple = SR · Gold = SSR (Watch for ⚡ SR ➔ SSR Golden Shatter!)
+                </div>
+                <h2 className="text-xl font-bold text-white font-display">
+                  ✨ Starfall Card Reveal ({gachaRevealCards.filter((c) => c.flipped).length}/
+                  {gachaRevealCards.length} Revealed)
+                </h2>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {gachaRevealCards.some((c) => !c.flipped) && (
+                  <button
+                    onClick={() => {
+                      const hasFakeOut = gachaRevealCards.some((c) => !c.flipped && c.isFakeOut);
+                      if (hasFakeOut) {
+                        sfx.play('ult');
+                        setGachaRevealCards((prev) =>
+                          prev
+                            ? prev.map((c) =>
+                                !c.flipped && c.isFakeOut ? { ...c, shattering: true } : { ...c, flipped: true }
+                              )
+                            : null
+                        );
+                        setTimeout(() => {
+                          setGachaRevealCards((prev) =>
+                            prev
+                              ? prev.map((c) => ({
+                                  ...c,
+                                  shattering: false,
+                                  displayRarity: c.actualRarity,
+                                  flipped: true,
+                                }))
+                              : null
+                          );
+                        }, 650);
+                      } else {
+                        sfx.play('gacha');
+                        setGachaRevealCards((prev) =>
+                          prev ? prev.map((c) => ({ ...c, flipped: true, displayRarity: c.actualRarity })) : null
+                        );
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-extrabold text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-500/25"
+                  >
+                    [✨ REVEAL ALL]
+                  </button>
+                )}
+                <button
+                  onClick={() => setGachaRevealCards(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono font-bold text-white cursor-pointer"
+                >
+                  {gachaRevealCards.every((c) => c.flipped) ? '[✓ CONFIRM & CONTINUE]' : '✕ Skip / Close'}
+                </button>
+              </div>
+            </div>
+
+            <div
+              className={`grid gap-3.5 ${
+                gachaRevealCards.length === 1
+                  ? 'grid-cols-1 max-w-xs mx-auto'
+                  : 'grid-cols-2 sm:grid-cols-5'
+              }`}
+            >
+              {gachaRevealCards.map((card, i) => {
+                const hero = card.hero;
+                const auraStyles =
+                  card.displayRarity === 'SSR'
+                    ? 'border-amber-300 shadow-[0_0_28px_rgba(251,191,36,0.65)] bg-gradient-to-b from-amber-500/25 via-slate-950 to-slate-950'
+                    : card.displayRarity === 'SR'
+                    ? 'border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.55)] bg-gradient-to-b from-purple-500/25 via-slate-950 to-slate-950'
+                    : 'border-sky-400 shadow-[0_0_16px_rgba(56,189,248,0.45)] bg-gradient-to-b from-sky-500/20 via-slate-950 to-slate-950';
+
+                return (
+                  <div
+                    key={card.uid}
+                    onClick={() => {
+                      if (card.flipped || card.shattering) return;
+                      if (card.isFakeOut) {
+                        sfx.play('ult');
+                        setGachaRevealCards((prev) =>
+                          prev
+                            ? prev.map((c, idx) => (idx === i ? { ...c, shattering: true } : c))
+                            : null
+                        );
+                        setTimeout(() => {
+                          setGachaRevealCards((prev) =>
+                            prev
+                              ? prev.map((c, idx) =>
+                                  idx === i
+                                    ? {
+                                        ...c,
+                                        shattering: false,
+                                        displayRarity: 'SSR',
+                                        flipped: true,
+                                      }
+                                    : c
+                                )
+                              : null
+                          );
+                        }, 650);
+                      } else {
+                        sfx.play('gacha');
+                        setGachaRevealCards((prev) =>
+                          prev
+                            ? prev.map((c, idx) =>
+                                idx === i ? { ...c, flipped: true, displayRarity: c.actualRarity } : c
+                              )
+                            : null
+                        );
+                      }
+                    }}
+                    className={`relative rounded-xl border-2 p-3 flex flex-col items-center justify-between min-h-[250px] transition-all cursor-pointer select-none overflow-hidden ${auraStyles} ${
+                      card.shattering ? 'animate-bounce ring-4 ring-amber-300 scale-105' : 'hover:-translate-y-1'
+                    }`}
+                  >
+                    {card.shattering && (
+                      <div className="absolute inset-0 z-30 bg-amber-400/30 backdrop-blur-[1px] flex flex-col items-center justify-center p-2 text-center">
+                        <svg viewBox="0 0 100 100" className="w-24 h-24 stroke-amber-300 fill-none stroke-[3]">
+                          <path d="M50,5 L35,45 L62,48 L25,95 M15,25 L50,50 L85,20 M20,75 L52,52 L85,80" />
+                        </svg>
+                        <span className="text-[11px] font-mono font-extrabold text-amber-200 bg-slate-950/90 px-2 py-0.5 rounded border border-amber-300">
+                          ⚡ SR ➔ SSR SHATTER!
+                        </span>
+                      </div>
+                    )}
+
+                    {!card.flipped ? (
+                      <div className="flex-1 flex flex-col items-center justify-between w-full py-1">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-extrabold ${
+                            card.displayRarity === 'SSR'
+                              ? 'bg-amber-400 text-slate-950'
+                              : card.displayRarity === 'SR'
+                              ? 'bg-purple-400 text-slate-950'
+                              : 'bg-sky-400 text-slate-950'
+                          }`}
+                        >
+                          {card.displayRarity} AURA
+                        </span>
+                        <div className="my-2">
+                          <PixelTarotCardBackCanvas className="w-28 h-36" />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-300">Click to Flip</span>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-between w-full">
+                        <div className="w-full flex items-center justify-between">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold ${
+                              card.actualRarity === 'SSR'
+                                ? 'bg-amber-400 text-slate-950'
+                                : card.actualRarity === 'SR'
+                                ? 'bg-purple-400 text-slate-950'
+                                : 'bg-sky-400 text-slate-950'
+                            }`}
+                          >
+                            {card.actualRarity}
+                          </span>
+                          <span className="text-[9px] font-mono text-amber-200 truncate max-w-[110px]">
+                            {card.isFakeOut ? '⚡ FAKE-OUT!' : card.note}
+                          </span>
+                        </div>
+
+                        <div className="w-28 h-28 my-1 flex items-center justify-center overflow-hidden rounded-lg bg-slate-900/80 border border-slate-800">
+                          <ResonatorSplashArt hero={hero} className="w-full h-full object-cover scale-125 translate-y-2" />
+                        </div>
+
+                        <div className="text-center w-full space-y-0.5">
+                          <div className="text-xs font-extrabold text-white font-display truncate">
+                            {hero.name}
+                          </div>
+                          <div className="text-[10px] font-mono text-amber-300 truncate">
+                            {card.bonusRelicName ? `+ ${card.bonusRelicName}` : hero.title}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNIFIED [🏰 SANCTUARIES & CHALLENGES] SPLIT-VIEW MODAL (6 MODES) */}
+      {sanctuariesModalOpen && (
+        <div
+          onClick={() => setSanctuariesModalOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-6xl h-[84vh] bg-[#0a0d18] border-2 border-amber-400/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          >
+            {/* Modal Top Header */}
+            <div className="flex items-center justify-between px-5 py-3 bg-[#060913] border-b border-slate-800 shrink-0">
+              <div>
+                <div className="text-[10px] font-mono text-amber-300 uppercase tracking-wider">
+                  Unified Challenge Hub · Squad CP: {squadCP.toLocaleString()} · Weekly Keys: {weeklyKeys}/15🗝️ · Sweep Tickets: {sweepTickets}🎫
+                </div>
+                <h2 className="text-lg font-bold text-white font-display">
+                  🏰 Sanctuaries &amp; Challenges
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setSanctuariesModalOpen(false);
+                    setMerchantHubOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/60 text-xs font-mono font-bold text-rose-200 cursor-pointer"
+                >
+                  [🛒 Open Merchant Hub]
+                </button>
+                <button
+                  onClick={() => setSanctuariesModalOpen(false)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 hover:text-white cursor-pointer"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Split-View Body: Left Sidebar (6 Modes) + Right Content Area */}
+            <div className="flex-1 min-h-0 grid grid-cols-12 overflow-hidden">
+              {/* LEFT SIDEBAR: 6 MODES */}
+              <div className="col-span-12 md:col-span-4 lg:col-span-3 bg-[#070a14] border-r border-slate-800 p-3 flex flex-col justify-between overflow-y-auto">
+                <div className="space-y-1.5">
+                  {(
+                    [
+                      {
+                        id: 'BOUNTY' as SanctuaryTabId,
+                        icon: '🪙',
+                        name: 'Golden Bounty Vault',
+                        sub: 'Massive Gold & Sweep Chests',
+                      },
+                      {
+                        id: 'STRIKER' as SanctuaryTabId,
+                        icon: '⚔️',
+                        name: 'Striker Sanctum',
+                        sub: 'Starfall Executioner Set',
+                      },
+                      {
+                        id: 'DEFENDER' as SanctuaryTabId,
+                        icon: '🛡️',
+                        name: 'Bastion Foundry',
+                        sub: 'Aegis of Dawn & Vanguard',
+                      },
+                      {
+                        id: 'TACTICIAN' as SanctuaryTabId,
+                        icon: '🔮',
+                        name: 'Astral Observatory',
+                        sub: 'Chrono Weaver & Scholar',
+                      },
+                      {
+                        id: 'ARENA' as SanctuaryTabId,
+                        icon: '🏟️',
+                        name: '1v1 Async Arena',
+                        sub: `${arenaRankPts} RP · ${arenaTokens}🏆 Tokens`,
+                      },
+                      {
+                        id: 'GUILD_RAID' as SanctuaryTabId,
+                        icon: '🐉',
+                        name: 'Guild Raid: Yog-Sothoth',
+                        sub: `Guild Lv.${guildState.level} · ${guildAttempts}/3 Tries`,
+                      },
+                    ]
+                  ).map((tab) => {
+                    const active = sanctuaryTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setSanctuaryTab(tab.id)}
+                        className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                          active
+                            ? 'bg-amber-400/20 border-amber-400 text-white shadow-md'
+                            : 'bg-slate-950/80 border-slate-800/90 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="text-xl leading-none">{tab.icon}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold font-display truncate">{tab.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400 truncate">{tab.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-[10px] font-mono">
+                  <div className="text-amber-300 font-bold">Quick Resource Refill</div>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setWeeklyKeys(15)}
+                      className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 cursor-pointer"
+                    >
+                      Refill 15🗝️
+                    </button>
+                    <button
+                      onClick={() => setGuildAttempts(3)}
+                      className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 cursor-pointer"
+                    >
+                      Refill 3🐉
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT CONTENT AREA */}
+              <div className="col-span-12 md:col-span-8 lg:col-span-9 p-5 overflow-y-auto flex flex-col gap-4">
+                {domainFeedback && (
+                  <div className="px-3.5 py-2 rounded-xl bg-emerald-950/90 border border-emerald-400/60 text-xs font-mono text-emerald-200 flex items-center justify-between">
+                    <span>{domainFeedback}</span>
+                    <button
+                      onClick={() => setDomainFeedback(null)}
+                      className="text-slate-400 hover:text-white ml-2 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* CASE 1: 4 DUNGEON DOMAINS (BOUNTY, STRIKER, DEFENDER, TACTICIAN) */}
+                {(sanctuaryTab === 'BOUNTY' ||
+                  sanctuaryTab === 'STRIKER' ||
+                  sanctuaryTab === 'DEFENDER' ||
+                  sanctuaryTab === 'TACTICIAN') &&
+                  (() => {
+                    const domainMetaList = [
+                      {
+                        id: 'BOUNTY' as const,
+                        tag: 'GOLD & SWEEP VAULT',
+                        name: '🪙 Golden Bounty Vault',
+                        sets: ['+2.5x Gold Bounty', 'Bonus Relics'],
+                      },
+                      {
+                        id: 'STRIKER' as const,
+                        tag: 'OFFENSIVE SANCTUARY',
+                        name: '⚔️ Striker Sanctum',
+                        sets: ['Vanguard of the Eclipse', 'Berserker of the Pale Moon'],
+                      },
+                      {
+                        id: 'DEFENDER' as const,
+                        tag: 'FORTRESS SANCTUARY',
+                        name: '🛡️ Bastion Foundry',
+                        sets: ['Colossus of the Iron Wall', 'Aegis of the Starlight'],
+                      },
+                      {
+                        id: 'TACTICIAN' as const,
+                        tag: 'ARCANA SANCTUARY',
+                        name: '🔮 Astral Observatory',
+                        sets: ['Breaker of the Void', 'Scholar of the Astral Spire'],
+                      },
+                    ];
+                    const dom = domainMetaList.find((d) => d.id === sanctuaryTab) || domainMetaList[0];
+                    return (
+                      <>
+                        {/* Top Pixel Art Mode Banner */}
+                        <div className="relative rounded-2xl border border-amber-400/50 bg-gradient-to-r from-[#17112b] via-[#0e172a] to-[#090d18] p-4 flex flex-wrap items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <span className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-400/40 text-[10px] font-mono text-amber-300">
+                              {dom.tag} · Weekly Keys: {weeklyKeys}/15🗝️
+                            </span>
+                            <h3 className="text-xl font-bold text-white font-display">{dom.name}</h3>
+                            <p className="text-xs text-slate-300">
+                              Drops: <strong className="text-amber-300">{dom.sets.join(' · ')}</strong> · Defeat the Tier Boss once to unlock instant Sweep!
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              disabled={gold < 15000}
+                              onClick={() => handleBuySweepTickets(1)}
+                              className="px-3 py-1.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/60 disabled:opacity-40 text-amber-200 text-xs font-mono font-bold cursor-pointer"
+                            >
+                              [+1🎫 15,000G]
+                            </button>
+                            <button
+                              disabled={gold < 135000}
+                              onClick={() => handleBuySweepTickets(10)}
+                              className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 text-xs font-mono font-bold cursor-pointer"
+                            >
+                              [+10🎫 135,000G]
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 5 Difficulty Rows (Tier I – V) with Right-Aligned Action Buttons */}
+                        <div className="space-y-2.5">
+                          {([1, 2, 3, 4, 5] as const).map((t) => {
+                            const spec = DOMAIN_TIER_SPECS[t];
+                            const unlocked = highestFloor >= spec.minFloor && squadCP >= spec.minCp;
+                            const bossCleared = Boolean(clearedDomainTiers[`${dom.id}_${t}`]);
+                            return (
+                              <div
+                                key={t}
+                                className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                                  unlocked
+                                    ? 'bg-slate-950/90 border-slate-800 hover:border-amber-400/60'
+                                    : 'bg-slate-950/40 border-slate-900 opacity-60'
+                                }`}
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 rounded bg-amber-400/20 border border-amber-400/50 text-xs font-mono font-bold text-amber-300">
+                                      Tier {spec.roman}
+                                    </span>
+                                    <span className="text-sm font-bold text-white font-display">
+                                      {dom.name} — {spec.dropSummary}
+                                    </span>
+                                    {bossCleared && (
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-mono text-emerald-300">
+                                        ✓ Sweep Unlocked
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs font-mono text-slate-400">
+                                    Req: Floor F{spec.minFloor}+ &amp; {spec.minCp.toLocaleString()} Squad CP · Gold Reward: +{spec.goldReward.toLocaleString()}G
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 ml-auto">
+                                  <button
+                                    disabled={!unlocked || weeklyKeys <= 0}
+                                    onClick={() => {
+                                      setSanctuariesModalOpen(false);
+                                      setActiveTab('BATTLE');
+                                      handleChallengeDomainBoss(dom.id, t);
+                                    }}
+                                    className="px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-mono font-extrabold text-xs cursor-pointer whitespace-nowrap"
+                                  >
+                                    [⚔️ Fight (1🗝️)]
+                                  </button>
+                                  <button
+                                    disabled={!unlocked || !bossCleared || weeklyKeys <= 0 || sweepTickets <= 0}
+                                    onClick={() => handleSweepDomain(dom.id, t)}
+                                    className="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-mono font-extrabold text-xs cursor-pointer whitespace-nowrap"
+                                  >
+                                    [⚡ Sweep (1🗝️+1🎫)]
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                {/* CASE 2: 1V1 ASYNC ARENA (5 RANKED AI RIVALS SORTED BY SQUAD CP) */}
+                {sanctuaryTab === 'ARENA' && (
+                  <>
+                    <div className="rounded-2xl border border-sky-400/50 bg-gradient-to-r from-[#0c1e35] via-[#0c1526] to-[#090d18] p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="px-2 py-0.5 rounded bg-sky-400/20 border border-sky-400/40 text-[10px] font-mono text-sky-300">
+                          Async Mirror PvP · Rank Points: {arenaRankPts} RP · Arena Tokens: {arenaTokens}🏆
+                        </span>
+                        <h3 className="text-xl font-bold text-white font-display">
+                          🏟️ 1v1 Async Arena — Challenger Ladder
+                        </h3>
+                        <p className="text-xs text-slate-300">
+                          Challenge 5 Ranked AI Squads sorted by Squad CP to earn Arena Tokens &amp; Starlight Gems.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSanctuariesModalOpen(false);
+                          setMerchantTab('ARENA');
+                          setMerchantHubOpen(true);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-mono font-extrabold text-xs cursor-pointer"
+                      >
+                        [🛒 Arena Shop ({arenaTokens}🏆)]
+                      </button>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {ARENA_RIVALS.map((rival, rIdx) => (
+                        <div
+                          key={rival.rank}
+                          className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 hover:border-sky-400/60 flex flex-wrap items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-xs font-mono font-bold text-sky-300">
+                                Rank #{rival.rank}
+                              </span>
+                              <span className="text-sm font-bold text-white font-display">{rival.name}</span>
+                              <span className="text-xs font-mono text-slate-400">({rival.title})</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs font-mono">
+                              <span className="text-amber-300 font-bold">
+                                ⚔️ Rival CP: {rival.cp.toLocaleString()}
+                              </span>
+                              <span className="text-slate-500">·</span>
+                              <span className="text-emerald-300">
+                                Reward: +{rival.tokenReward}🏆 Tokens &amp; +{rival.gemReward}💎 Gems
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              {rival.teamIds.map((hid: string) => {
+                                const h = RESONATORS.find((r) => r.id === hid);
+                                return (
+                                  <span
+                                    key={hid}
+                                    className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-mono text-slate-200"
+                                  >
+                                    {h?.name || hid}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setActiveArenaRivalIndex(rIdx);
+                              setSanctuariesModalOpen(false);
+                              setActiveTab('BATTLE');
+                              setBattleSubMode('ARENA');
+                              initFloorWave(floor, false, 'ARENA');
+                            }}
+                            className="px-4 py-2 rounded-lg bg-sky-400 hover:bg-sky-300 text-slate-950 font-mono font-extrabold text-xs cursor-pointer ml-auto"
+                          >
+                            [⚔️ Battle]
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* CASE 3: GUILD RAID (YOG-SOTHOTH + GUILD HALL JOIN/DONATE + EASY/NORMAL/HARD) */}
+                {sanctuaryTab === 'GUILD_RAID' && (
+                  <>
+                    <div className="rounded-2xl border border-rose-400/50 bg-gradient-to-r from-[#2c0f1e] via-[#171026] to-[#090d18] p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/40 text-[10px] font-mono text-rose-300">
+                          90s DPS Race · Attempts: {guildAttempts}/3 · Total DMG: {guildTotalDamage.toLocaleString()} · Medals: {guildMedals}🎖️
+                        </span>
+                        <h3 className="text-xl font-bold text-white font-display">
+                          🐉 Guild Raid: Outer God Yog-Sothoth
+                        </h3>
+                        <p className="text-xs text-slate-300">
+                          {guildState.joined
+                            ? `Active Guild: ${guildState.name} (Lv.${guildState.level}/5 · EXP ${guildState.exp}/${guildState.level * 100})`
+                            : 'Join or Create a Guild to unlock Yog-Sothoth Raid difficulties!'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {guildState.joined && (
+                          <button
+                            disabled={gold < 10000 || guildState.level >= 5}
+                            onClick={() => {
+                              if (gold < 10000 || guildState.level >= 5) return;
+                              setGold((g) => g - 10000);
+                              setGuildState((prev) => {
+                                const nextExp = prev.exp + 50;
+                                const req = prev.level * 100;
+                                if (nextExp >= req && prev.level < 5) {
+                                  return { ...prev, level: prev.level + 1, exp: nextExp - req };
+                                }
+                                return { ...prev, exp: nextExp };
+                              });
+                              setGuildMedals((m) => m + 15);
+                              sfx.play('forge_ok');
+                            }}
+                            className="px-3 py-2 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/60 disabled:opacity-40 text-amber-200 font-mono font-bold text-xs cursor-pointer"
+                          >
+                            [🪙 Donate 10,000G (+50 Guild EXP &amp; +15🎖️)]
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSanctuariesModalOpen(false);
+                            setMerchantTab('GUILD');
+                            setMerchantHubOpen(true);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-mono font-extrabold text-xs cursor-pointer"
+                        >
+                          [🛒 Guild Shop ({guildMedals}🎖️)]
+                        </button>
+                      </div>
+                    </div>
+
+                    {!guildState.joined ? (
+                      <div className="p-6 rounded-2xl bg-slate-950 border border-rose-500/40 text-center space-y-4">
+                        <h4 className="text-base font-bold text-white font-display">
+                          🛡️ Guild Hall — Join or Create a Starfall Guild
+                        </h4>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto">
+                          You must belong to an active Guild to challenge Yog-Sothoth and earn Guild Medals.
+                        </p>
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => {
+                              setGuildState({ joined: true, name: 'Starfall Vanguard', level: 1, exp: 0 });
+                              sfx.play('gacha');
+                            }}
+                            className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-mono font-extrabold text-xs cursor-pointer"
+                          >
+                            [🛡️ Join &quot;Starfall Vanguard&quot; (Free)]
+                          </button>
+                          <button
+                            onClick={() => {
+                              setGuildState({ joined: true, name: 'Chrono Sovereigns', level: 2, exp: 0 });
+                              sfx.play('gacha');
+                            }}
+                            className="px-5 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-mono font-extrabold text-xs cursor-pointer"
+                          >
+                            [👑 Create &quot;Chrono Sovereigns&quot; (Starts Lv.2)]
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {(['EASY', 'NORMAL', 'HARD'] as GuildRaidDiff[]).map((diffKey) => {
+                          const spec = GUILD_RAID_DIFF_SPECS[diffKey];
+                          const unlocked = guildState.level >= spec.minGuildLv;
+                          return (
+                            <div
+                              key={diffKey}
+                              className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                                unlocked
+                                  ? 'bg-slate-950/90 border-slate-800 hover:border-rose-400/60'
+                                  : 'bg-slate-950/40 border-slate-900 opacity-60'
+                              }`}
+                            >
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/50 text-xs font-mono font-bold text-rose-300">
+                                    {spec.label}
+                                  </span>
+                                  <span className="text-xs font-mono text-amber-300">
+                                    Unlocks Guild Lv.{spec.minGuildLv} · Rec. CP {spec.recCp.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-mono text-slate-300">
+                                  Boss DMG: <strong>{spec.bossDmgMult}x</strong> · Score &amp; Medal Multiplier:{' '}
+                                  <strong className="text-emerald-300">{spec.scoreMult}x</strong>
+                                  {diffKey === 'HARD' && (
+                                    <span className="text-rose-400 ml-2">
+                                      (⚠️ Wipe before 90s halves score/medals 0.5x!)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <button
+                                disabled={!unlocked || guildAttempts <= 0}
+                                onClick={() => {
+                                  setGuildRaidDiff(diffKey);
+                                  setSanctuariesModalOpen(false);
+                                  setActiveTab('BATTLE');
+                                  setBattleSubMode('GUILD_RAID');
+                                  initFloorWave(floor, false, 'GUILD_RAID');
+                                }}
+                                className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-mono font-extrabold text-xs cursor-pointer ml-auto"
+                              >
+                                [⚔️ Fight (1 Attempt)]
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNIFIED 4-TAB [🛒 MERCHANT HUB] MODAL */}
+      {merchantHubOpen && (
+        <div
+          onClick={() => setMerchantHubOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-5xl bg-[#0a0d18] border-2 border-rose-400/60 rounded-2xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="text-[11px] font-mono text-rose-300 uppercase tracking-wider">
+                  Unified 4-Tab Merchant Hub · Gold: {gold.toLocaleString()}🪙 · Shards: {starfallShards}🌟 · Arena: {arenaTokens}🏆 · Guild: {guildMedals}🎖️
+                </div>
+                <h2 className="text-xl font-bold text-white font-display">🛒 Grand Merchant Hub</h2>
+              </div>
+              <button
+                onClick={() => setMerchantHubOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 hover:text-white cursor-pointer"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* 4 Shop Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(
+                [
+                  { id: 'GOLD' as MerchantTabId, label: '1. 🪙 General Gold Shop' },
+                  { id: 'STARFALL' as MerchantTabId, label: '2. 🌟 Starfall Exchange' },
+                  { id: 'ARENA' as MerchantTabId, label: '3. 🏆 Arena Armory' },
+                  { id: 'GUILD' as MerchantTabId, label: '4. 🎖️ Guild Treasury' },
+                ]
+              ).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setMerchantTab(t.id)}
+                  className={`py-2 px-3 rounded-xl border font-mono font-bold text-xs cursor-pointer transition-colors ${
+                    merchantTab === t.id
+                      ? 'bg-amber-400 text-slate-950 border-amber-300'
+                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* TAB 1: GENERAL GOLD SHOP */}
+            {merchantTab === 'GOLD' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/50 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-amber-300">INSTANT SWEEP</span>
+                    <h3 className="text-sm font-bold text-white font-display">🎫 1x Dungeon Sweep Ticket</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Instantly sweeps any cleared Dungeon Tier without fighting the boss.
+                    </p>
+                  </div>
+                  <button
+                    disabled={gold < 15000}
+                    onClick={() => handleBuySweepTickets(1)}
+                    className="w-full py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Buy 1x 🎫 · 15,000 Gold]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/50 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-emerald-300">10% BULK DISCOUNT</span>
+                    <h3 className="text-sm font-bold text-white font-display">🎫 10x Dungeon Sweep Bundle</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Adds +10 Sweep Tickets at a 10% Gold discount (saves 15,000 Gold).
+                    </p>
+                  </div>
+                  <button
+                    disabled={gold < 135000}
+                    onClick={() => handleBuySweepTickets(10)}
+                    className="w-full py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Buy 10x 🎫 · 135,000 Gold]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/50 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-purple-300">ANVIL ENHANCEMENT</span>
+                    <h3 className="text-sm font-bold text-white font-display">⚒️ Masterwork Forge Catalyst</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Guaranteed +1 Level to your currently selected Relic in the Gear &amp; Forge tab.
+                    </p>
+                  </div>
+                  <button
+                    disabled={gold < 25000 || !selectedGear || selectedGear.level >= 15}
+                    onClick={() => {
+                      if (gold < 25000 || !selectedGear || selectedGear.level >= 15) return;
+                      setGold((g) => g - 25000);
+                      setGearInventory((prev) =>
+                        prev.map((it) =>
+                          it.id === selectedGear.id ? { ...it, level: Math.min(15, it.level + 1) } : it
+                        )
+                      );
+                      sfx.play('forge_ok');
+                    }}
+                    className="w-full py-2 rounded-lg bg-purple-500 hover:bg-purple-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Enhance Selected Relic · 25,000 Gold]
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: STARFALL EXCHANGE (UNLOCKS LOCKED SSR HEROES!) */}
+            {merchantTab === 'STARFALL' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+                <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-amber-300">5★ SIGNATURE RELIC</span>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      {featuredBannerHero.name}&apos;s Astral Edge (+9)
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      +9 Masterwork Weapon (+20% ATK &amp; CRIT Substats) equipped to {featuredBannerHero.name}.
+                    </p>
+                  </div>
+                  <button
+                    disabled={starfallShards < 80}
+                    onClick={() => {
+                      if (starfallShards < 80) return;
+                      setStarfallShards((s) => s - 80);
+                      const sigWep: GearItem = {
+                        id: `G_SIGWEP_${Date.now()}`,
+                        name: `${featuredBannerHero.name}'s Astral Edge`,
+                        slot: 'Weapon',
+                        set: 'Starfall Executioner',
+                        level: 9,
+                        failStackCount: 0,
+                        mainStatKey: 'ATK%',
+                        baseMainValue: 10,
+                        baseFlatStat: 125,
+                        substats: [
+                          { stat: 'CRIT RATE%', value: 10 },
+                          { stat: 'CRIT DMG%', value: 18 },
+                        ],
+                        equippedBy: featuredBannerHero.id,
+                      };
+                      setGearInventory((prev) => [
+                        sigWep,
+                        ...prev.map((it) =>
+                          it.equippedBy === featuredBannerHero.id && it.slot === 'Weapon'
+                            ? { ...it, equippedBy: undefined }
+                            : it
+                        ),
+                      ]);
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange · 80 Shards]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-rose-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-rose-300">FEATURED SOVEREIGN</span>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      {featuredBannerHero.name} Contract
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Unlocks {featuredBannerHero.name} immediately (or ascends +1★ &amp; +5 Lv if owned).
+                    </p>
+                  </div>
+                  <button
+                    disabled={starfallShards < 100}
+                    onClick={() => {
+                      if (starfallShards < 100) return;
+                      setStarfallShards((s) => s - 100);
+                      setHeroProgress((prev) => {
+                        const cur = prev[featuredBannerHero.id];
+                        return {
+                          ...prev,
+                          [featuredBannerHero.id]: {
+                            ...cur,
+                            unlocked: true,
+                            stars: cur.unlocked ? Math.min(5, cur.stars + 1) : cur.stars,
+                            level: cur.unlocked ? Math.min(100, cur.level + 5) : cur.level,
+                          },
+                        };
+                      });
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange · 100 Shards]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-sky-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-sky-300">WISHLIST #1 SSR</span>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      {RESONATORS.find((r) => r.id === wishlistIds[0])?.name || 'Ignis'} Crest
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Unlocks your #1 Wishlist SSR Resonator (or ascends +1★ &amp; +5 Lv if owned).
+                    </p>
+                  </div>
+                  <button
+                    disabled={starfallShards < 75}
+                    onClick={() => {
+                      if (starfallShards < 75) return;
+                      const targetId = wishlistIds[0] || 'H01';
+                      setStarfallShards((s) => s - 75);
+                      setHeroProgress((prev) => {
+                        const cur = prev[targetId];
+                        return {
+                          ...prev,
+                          [targetId]: {
+                            ...cur,
+                            unlocked: true,
+                            stars: cur.unlocked ? Math.min(5, cur.stars + 1) : cur.stars,
+                            level: cur.unlocked ? Math.min(100, cur.level + 5) : cur.level,
+                          },
+                        };
+                      });
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange · 75 Shards]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-purple-300">CATALYST CHEST</span>
+                    <h3 className="text-sm font-bold text-white font-display">Reforge &amp; Catalyst Chest</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Grants +15,000 Gold &amp; upgrades your Selected Relic by +1 Level.
+                    </p>
+                  </div>
+                  <button
+                    disabled={starfallShards < 15}
+                    onClick={() => {
+                      if (starfallShards < 15) return;
+                      setStarfallShards((s) => s - 15);
+                      setGold((g) => g + 15000);
+                      if (selectedGear && selectedGear.level < 15) {
+                        setGearInventory((prev) =>
+                          prev.map((it) =>
+                            it.id === selectedGear.id ? { ...it, level: Math.min(15, it.level + 1) } : it
+                          )
+                        );
+                      }
+                      sfx.play('forge_ok');
+                    }}
+                    className="w-full py-2 rounded-lg bg-purple-500 hover:bg-purple-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange · 15 Shards]
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: ARENA ARMORY */}
+            {merchantTab === 'ARENA' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="p-4 rounded-xl bg-slate-950 border border-sky-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-sky-300">STARLIGHT GEM SUPPLY</span>
+                    <h3 className="text-sm font-bold text-white font-display">💎 480 Starlight Gems (3 Summons)</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Exchange 50 Arena Tokens earned from 1v1 Challenger victories for 480 Starlight Gems.
+                    </p>
+                  </div>
+                  <button
+                    disabled={arenaTokens < 50}
+                    onClick={() => {
+                      if (arenaTokens < 50) return;
+                      setArenaTokens((t) => t - 50);
+                      setStarlightGems((g) => g + 480);
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-sky-400 hover:bg-sky-300 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange 50🏆 ➔ +480 💎 Gems]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-amber-300">CHAMPION BOUNTY</span>
+                    <h3 className="text-sm font-bold text-white font-display">🪙 35,000 Gold + 2🎫 Sweep Tickets</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Exchange 30 Arena Tokens for a war chest of Gold and Dungeon Sweep Tickets.
+                    </p>
+                  </div>
+                  <button
+                    disabled={arenaTokens < 30}
+                    onClick={() => {
+                      if (arenaTokens < 30) return;
+                      setArenaTokens((t) => t - 30);
+                      setGold((g) => g + 35000);
+                      setSweepTickets((s) => s + 2);
+                      sfx.play('forge_ok');
+                    }}
+                    className="w-full py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange 30🏆 ➔ 35,000G + 2🎫]
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: GUILD TREASURY */}
+            {merchantTab === 'GUILD' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="p-4 rounded-xl bg-slate-950 border border-rose-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-rose-300">EXOTIC RAID RELIC</span>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      🌌 Exotic Voidweaver Core Sigil +6
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Crafts an Exotic +6 Voidweaver Core Sigil (+32% Skill DMG on Break) from Yog-Sothoth Medals.
+                    </p>
+                  </div>
+                  <button
+                    disabled={guildMedals < 100}
+                    onClick={() => {
+                      if (guildMedals < 100) return;
+                      setGuildMedals((m) => m - 100);
+                      const raidRelic: GearItem = {
+                        id: `G_RAID_${Date.now()}`,
+                        name: 'Yog-Sothoth Voidweaver Core',
+                        slot: 'Core Sigil',
+                        set: 'Starfall Executioner',
+                        level: 6,
+                        failStackCount: 0,
+                        mainStatKey: 'CRIT RATE%',
+                        baseMainValue: 10,
+                        baseFlatStat: 280,
+                        substats: [
+                          { stat: 'CRIT DMG%', value: 16 },
+                          { stat: 'ATK%', value: 11 },
+                          { stat: 'BREAK POWER%', value: 14 },
+                        ],
+                        isExoticSigil: true,
+                        sigilTrait: SIGIL_CORE_TRAITS[2],
+                      };
+                      setGearInventory((prev) => [raidRelic, ...prev]);
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange 100🎖️ ➔ Exotic Voidweaver Core +6]
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/60 flex flex-col justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-purple-300">TIME SHARD PACT</span>
+                    <h3 className="text-sm font-bold text-white font-display">⏳ +120 Chrono Time Shards</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Exchange 60 Guild Medals to empower your Zodiac Constellations in the Chrono Rewind tab.
+                    </p>
+                  </div>
+                  <button
+                    disabled={guildMedals < 60}
+                    onClick={() => {
+                      if (guildMedals < 60) return;
+                      setGuildMedals((m) => m - 60);
+                      setTimeShards((s) => s + 120);
+                      sfx.play('ult');
+                    }}
+                    className="w-full py-2 rounded-lg bg-purple-500 hover:bg-purple-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Exchange 60🎖️ ➔ +120 Time Shards]
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

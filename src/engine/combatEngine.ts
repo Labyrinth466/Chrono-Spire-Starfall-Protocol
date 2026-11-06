@@ -318,7 +318,7 @@ class SoundEngine {
 export const sfx = new SoundEngine();
 
 // --- ELEMENTAL ADVANTAGE / COUNTER SYSTEM (v2.2) ---
-// Primary 4-Element Cycle: Fire > Wind > Electro > Cryo > Fire
+// Primary 4-Element Natural Cycle: Fire > Cryo > Wind > Electro > Fire
 // Astral Dual Counter: Light <-> Dark (mutual advantage, never resist)
 export interface ElementalCounterResult {
   state: 'ADVANTAGE' | 'DISADVANTAGE' | 'NEUTRAL';
@@ -329,17 +329,17 @@ export interface ElementalCounterResult {
 }
 
 const PRIMARY_ADVANTAGE_MAP: Partial<Record<ElementType, ElementType>> = {
-  Fire: 'Wind',
+  Fire: 'Cryo',
+  Cryo: 'Wind',
   Wind: 'Electro',
-  Electro: 'Cryo',
-  Cryo: 'Fire',
+  Electro: 'Fire',
 };
 
 export function getRecommendedCounterElement(enemyElement: ElementType): ElementType {
-  if (enemyElement === 'Wind') return 'Fire';
+  if (enemyElement === 'Cryo') return 'Fire';
+  if (enemyElement === 'Wind') return 'Cryo';
   if (enemyElement === 'Electro') return 'Wind';
-  if (enemyElement === 'Cryo') return 'Electro';
-  if (enemyElement === 'Fire') return 'Cryo';
+  if (enemyElement === 'Fire') return 'Electro';
   if (enemyElement === 'Light') return 'Dark';
   return 'Light';
 }
@@ -738,14 +738,17 @@ export function computeHeroStats(
     else atkPct += rowBonuses.backAtkPct;
   }
 
-  // Tarot Blessings (Supports both ARCANA_00..21 and legacy B01..12 keys)
+  // Tarot Blessings (Bound 100% accurately to MAJOR_ARCANA_TAROT descriptions)
   const getBlessVal = (id: string): number => {
     const tier = blessings[id] || 0;
     if (tier <= 0) return 0;
     const card = BLESSING_CARDS.find((b) => b.id === id);
     return card ? card.tiers[Math.min(2, tier - 1)] : 0;
   };
-  atkPct += getBlessVal('ARCANA_19') + getBlessVal('ARCANA_15');
+  atkPct += getBlessVal('ARCANA_19') + getBlessVal('ARCANA_15') + getBlessVal('ARCANA_00');
+  if ((blessings['ARCANA_15'] || 0) > 0) hpPct -= 10;
+  if (isFront) defPct += getBlessVal('ARCANA_04');
+  healingBonus += getBlessVal('ARCANA_02');
   breakPower += getBlessVal('ARCANA_08');
   spdPct += getBlessVal('ARCANA_07');
   if ((blessings['ARCANA_03'] || 0) > 0) hpPct += 20;
@@ -1856,24 +1859,24 @@ export function runBalanceSelfChecks(): boolean {
   const canUndoLeaf =
     canUndoConstellationNode(19, [...ariesAllExceptKeystones, 19], 'ARIES') &&
     !canUndoConstellationNode(14, [...ariesAllExceptKeystones, 19], 'ARIES');
-  const fireVsWind = evaluateElementalCounter('Fire', 'Wind');
-  const windVsFire = evaluateElementalCounter('Wind', 'Fire');
+  const fireVsCryo = evaluateElementalCounter('Fire', 'Cryo');
+  const cryoVsFire = evaluateElementalCounter('Cryo', 'Fire');
   const lightVsDark = evaluateElementalCounter('Light', 'Dark');
   const darkVsLight = evaluateElementalCounter('Dark', 'Light');
   const counterChecks =
-    fireVsWind.state === 'ADVANTAGE' &&
-    fireVsWind.dmgMult === 1.3 &&
-    fireVsWind.bpMult === 1.25 &&
-    fireVsWind.bonusCritRate === 15 &&
-    windVsFire.state === 'DISADVANTAGE' &&
-    windVsFire.dmgMult === 0.8 &&
-    windVsFire.bpMult === 0.85 &&
+    fireVsCryo.state === 'ADVANTAGE' &&
+    fireVsCryo.dmgMult === 1.3 &&
+    fireVsCryo.bpMult === 1.25 &&
+    fireVsCryo.bonusCritRate === 15 &&
+    cryoVsFire.state === 'DISADVANTAGE' &&
+    cryoVsFire.dmgMult === 0.8 &&
+    cryoVsFire.bpMult === 0.85 &&
     lightVsDark.state === 'ADVANTAGE' &&
     darkVsLight.state === 'ADVANTAGE' &&
     getRecommendedFloorCP(1) === 8500;
 
   return (
-    RESONATORS.length === 18 &&
+    RESONATORS.length === 23 &&
     Object.keys(ELEMENTAL_REACTION_MATRIX).length === 9 &&
     r4 === 100 &&
     r7 === 100 &&

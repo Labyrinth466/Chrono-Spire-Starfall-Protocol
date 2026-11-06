@@ -1,91 +1,84 @@
-# Chrono Spire: Starfall Protocol — 2D Pixel Art Engine, 3-Layer Monster HUD & 16-Bit Pixel Art Tarot Cards
+# Implementation Plan — SSOT v2.3 Refinement
 
-This plan restores the classic **2D Pixel Art (HD-2D Canvas)** engine (replacing Three.js), fixes monster HP and status text overlapping enemy sprites by introducing a strict **3-Layer Vertical Enemy Container** (`-top-7` 22×22px SVG status badges, unobstructed 2D pixel sprite center, `-bottom-8` HP + 5-Segment Stagger + `WEAK` badge under feet), and upgrades all **22 Major Arcana Tarot Cards** to animated **`32×40` 16-Bit Pixel Art Tarot Cards** (`drawPixelTarotCard`).
+## 1. Starter `R` Roster (5 Units), `SR/SSR` Lock & Tutorial Free `100% SR` Pull
+- **`src/data/resonators.ts`**:
+  - Add 5 `R` (Rare, 1★ Blue Frame) starter Resonators to `RESONATORS` (total 23 Resonators: 12 SSR, 6 SR, 5 R):
+    1. `R01 Vanguard Guard` (`Fire` · `Tank / Breaker` · Front)
+    2. `R02 Gale Archer` (`Wind` · `Ranged DPS` · Back)
+    3. `R03 Frost Acolyte` (`Cryo` · `Debuffer` · Back)
+    4. `R04 Dawn Cleric` (`Light` · `Support & Healer` · Back)
+    5. `R05 Shadow Blade` (`Dark` · `Melee DPS` · Front)
+  - Update `runBalanceSelfChecks()` in `src/engine/combatEngine.ts` to validate the expanded 23-Resonator roster (12 SSR + 6 SR + 5 R) and the updated elemental counter cycle.
+- **`src/App.tsx`**:
+  - Set initial party (`partyIds`) to `['R01', 'R05', 'R02', 'R03', 'R04']` and `INITIAL_HERO_PROGRESS` so only `R01–R05` start with `unlocked: true` (`1★`, `Lv.10`), while all 6 `SR` and 12 `SSR` start with `unlocked: false`.
+  - Render locked `SR/SSR` heroes in the `HEROES` tab and squad pickers with a dark silhouette overlay and `🔒 LOCKED (Summon or Exchange to Unlock)` badge; prevent deploying locked heroes until unlocked via Summon or Merchant Hub Exchange.
+  - Add `hasDoneFirstFreePull: boolean` (initial `false`). In the `SUMMON` tab, display **`[✨ FREE FIRST SUMMON (100% SR)] (0 💎)`** when `!hasDoneFirstFreePull`, guaranteeing 1 random `SR` Resonator unlock on first press.
+  - On subsequent normal pulls that do not roll `SSR` or `SR`, grant an `R` Resonator duplicate card (`R01–R05`, upgrading their Stars up to 5★ and Level) paired with a 3★–4★ Relic drop.
 
-## User Review & Critical Decisions
+## 2. `Starfall Card Reveal Modal` & `SR ➔ SSR Shatter Fake-Out` (25% Chance)
+- **`src/App.tsx`**:
+  - When triggering `1x` or `10x Summon` (or the free first pull), open a full-screen **Starfall Card Reveal Overlay** displaying 1 or 10 floating astral cards with rarity-colored back auras (`Blue = R`, `Purple = SR`, `Gold = SSR`).
+  - Support clicking individual cards to flip or clicking **`[✨ REVEAL ALL]`**.
+  - **Fake-Out Shatter (`SR ➔ SSR`)**: When a pull is `SSR`, roll a **25% chance** (`isFakeOut: true`) to initially render the card back with a **Purple (`SR`) aura**. Upon flipping that card, play a violent card shake + golden lightning bolt + spiderweb crack shatter animation (`⚡ GOLDEN ASCENSION!`) that bursts into the **Gold `SSR` card** with a golden chime SFX.
 
-> [!IMPORTANT]
-> The following decisions were confirmed during Phase 1 clarification:
+## 3. Unified `[🏰 Sanctuaries & Challenges]` Modal & 4-Tab `[🛒 Merchant Hub]`
+- **Top Header / Battle Bar (`src/App.tsx`)**:
+  - Keep the Tower `Spire Battle` canvas as the central main screen and add two primary buttons on the top bar: **`[🏰 Sanctuaries & Challenges]`** and **`[🛒 Merchant Hub]`**.
+- **`[🏰 Sanctuaries & Challenges]` Split-View Modal**:
+  - **Left Sidebar (6 Modes with Icons)**:
+    1. `🪙 Golden Bounty Vault`
+    2. `⚔️ Striker Sanctum`
+    3. `🛡️ Bastion Foundry`
+    4. `🔮 Astral Observatory`
+    5. `🏟️ 1v1 Async Arena`
+    6. `🐉 Guild Raid: Yog-Sothoth`
+  - **Right Content Area (Top Pixel Art Mode Banner + Action Rows)**:
+    - **Dungeons (4 Domains)**: 5 difficulty rows (`Tier I – V`) showing Floor/CP requirements and drops, with right-aligned **`[⚔️ Fight (1🗝️)]`** and **`[⚡ Sweep (1🗝️+1🎫)]`** buttons.
+    - **1v1 Async Arena**: 5 ranked AI Rival challengers sorted by Squad CP (displaying Rival name, 5-hero portrait icons, `Squad CP`, and rewards) with a right-aligned **`[⚔️ Battle]`** button per row + top-right **`[🛒 Arena Shop]`** shortcut.
+    - **Guild Raid (`Yog-Sothoth`)**:
+      - If `!guildState.joined`: show **`[🛡️ Guild Hall — Join or Create Guild]`** (create custom guild name or join a preset guild) + **`[Donate 10,000 Gold (+Guild EXP)]`** button to level up **Guild Level (`Lv.1–5`)**.
+      - Once joined: show Guild info header + **3 Raid Difficulty rows (`Easy / Normal / Hard`)** with right-aligned **`[⚔️ Fight (1 Attempt)]`**:
+        - `Easy (Guild Lv.1 | Rec. CP 15,000)`: Boss DMG `1.0x`, Score/Medal Multiplier `1.0x`
+        - `Normal (Guild Lv.2 | Rec. CP 40,000)`: Boss DMG `1.8x`, Score/Medal Multiplier `2.2x`
+        - `Hard (Guild Lv.3 | Rec. CP 75,000)`: Boss DMG `3.2x`, Score/Medal Multiplier `4.5x` (if the squad wipes before 90s, final score/medals are halved `0.5x`).
+- **`[🛒 Merchant Hub]` 4-Tab Unified Shop Modal**:
+  - **Tab 1 (`🪙 General Gold Shop`)**: `1x 🎫 Sweep Ticket` (15,000G), `10x 🎫 Sweep Tickets` (135,000G), and Forge Enhancement Catalysts.
+  - **Tab 2 (`🌟 Starfall Exchange`)**: Featured 5★ Signature Weapon (`80 Shards`), Featured SSR Unlock/Ascend (`100 Shards`), Wishlist #1 SSR Unlock/Ascend (`75 Shards`), Reforge & Catalyst Chest (`15 Shards`).
+  - **Tab 3 (`🏆 Arena Armory`)**: Exchange `50 Arena Tokens` for `480 💎 Starlight Gems` and Arena gear rewards.
+  - **Tab 4 (`🎖️ Guild Treasury`)**: Exchange `100 Guild Medals` for `Exotic Voidweaver Core Sigil (+6)`.
+  - Wire shop shortcuts in Summon, Arena, and Guild Raid to open `Merchant Hub` directly on the matching tab.
 
-- **Confirmed Decision 1 (3-Layer Enemy HUD Architecture)**: Render each enemy/boss part's 3-layer stack as a crisp **DOM overlay container anchored to the enemy's 2D canvas coordinates**, while stripping all overlapping in-canvas enemy HP bars and status text from `renderBattlefieldCanvas` so the 2D Pixel Art sprite is 100% unobstructed.
-- **Confirmed Decision 2 (16-Bit Pixel Art Tarot Card Placement)**: Render the `32×40` (`image-rendering: pixelated`) 16-Bit Pixel Art Tarot Card illustrations (`0. The Fool` through `XXI. The World`) in **both** the Every-5-Floor Tarot Blessing Modal (`[AUTO CARD: 6.0s]`) and the **Official Game Wiki Arcana Compendium**.
+## 4. Natural Elemental Counter Cycle & `<ElementalWheelBadge />` SVG
+- **`src/engine/combatEngine.ts`**:
+  - Update `PRIMARY_ADVANTAGE_MAP` and `getRecommendedCounterElement` to the natural 4-element cycle:
+    - **`🔥 Fire > ❄️ Cryo > 🌪️ Wind > ⚡ Electro > 🔥 Fire`**
+    - **`☀️ Light ↔ 🌑 Dark`** (mutual `+30% DMG`, `+25% Break Power`, `+15% Crit Rate`).
+- **`src/components/ResonatorArtAndWiki.tsx` & `src/App.tsx`**:
+  - Create `<ElementalWheelBadge activeBossElement={...} />` rendering a crisp SVG 4-element directional ring + Light/Dark dual-axis badge, highlighting the active enemy's element and its recommended counter element. Display in the top-right of the battlefield HUD and in the Squad Deployment / Heroes header.
 
----
+## 5. Tarot 3-Card 3D Flip Reveal & 5-Zone 4-Layer Swappable Parallax Battlefield
+- **Every-5-Floor Tarot 3-Card Flip (`src/App.tsx`)**:
+  - Start all 3 Tarot cards face-down (`flippedCards: [false, false, false]`) showing an ornate **Astral Pixel Card Back** (`32×40` pixel art back or SVG gold-violet celestial pattern) + **`[✨ REVEAL ALL 3 CARDS]`** button.
+  - Clicking a face-down card flips it (`rotateY(180deg)` 3D CSS perspective transition) to reveal the full-bleed `32×40` 16-Bit Pixel Art illustration and blessing description; clicking a face-up card selects that blessing (`[SELECT BLESSING]`).
+  - When the AFK countdown timer reaches `<= 2.0s`, automatically flip all 3 cards face-up; at `0.0s`, automatically select Card #1.
+- **5-Zone Swappable Parallax Battlefield (`src/engine/pixelRenderer.ts`)**:
+  - Export `ZONE_PARALLAX_ASSETS` with 5 zone slots (`Zone 0` to `Zone 4`), each supporting optional `HTMLImageElement | null` overrides for `{ skyImg, farBgImg, midArchImg, floorImg }` plus a helper `setZoneParallaxAsset(zoneIdx, layer, imageUrl)`.
+  - Compute `zoneIdx = Math.min(4, Math.floor((floor - 1) / 20))` in `renderBattlefieldCanvas` (pass `floor` into `renderBattlefieldCanvas`) and render 4 distinct parallax layers (`0.1x Sky`, `0.35x Far BG`, `0.65x Mid Arch & Weather Particles`, `1.0x Foreground Battle Floor`):
+    - **Zone 0 (F1–20)**: `Starfall Forest Base` (bioluminescent pines, cyan glowing mushrooms, fireflies, ancient rune stones)
+    - **Zone 1 (F21–40)**: `Stormcrag Frost Peaks` (jagged snow peaks, drifting mist, braziers, purple lightning)
+    - **Zone 2 (F41–60)**: `Aether Cloudsea Sanctum` (golden cloudsea temple, floating sanctuary arches, celestial rays)
+    - **Zone 3 (F61–80)**: `Astral Stratosphere Orbit` (curved planetary horizon, Saturn-like astral rings, drifting meteors)
+    - **Zone 4 (F81–100+)**: `Abyssal Singularity Summit` (deep-space violet-gold black hole accretion vortex, floating runic obelisks)
 
-## 1. Overview & Core Concept
-
-- **What It Does**:
-  1. **Keep 2D Pixel Art Engine (`HD-2D Canvas`)**:
-     - Uses `renderBattlefieldCanvas` on the 2D `<canvas>` (`1040×430`) for the Tower Battle arena and `PixelPreviewCanvas` for the Hero/Summon sprite preview, removing Three.js `VoxelBattlefield3D` and `VoxelPreview3D` usage.
-  2. **Fix Monster HP/Status Overlap with 3-Layer Vertical Enemy Stack**:
-     - Prohibits any HP bar or status text at `top-1/2` (center of the monster sprite).
-     - Each Enemy / Boss Part container (`flex flex-col items-center justify-between`) is structured into 3 vertical layers:
-       - **Layer 1 (Above Head `-top-7`)**: Horizontal row (`flex gap-1`) of **`22×22px` SVG Status Badges ONLY** (never text strings like `Bleed · Burn...`). Merges duplicate status types and renders a bottom-right corner badge showing the stack count (`x2`, `x5`) or remaining timer (`3.8s`) for:
-         - 🔥 `Burn` (`#f97316`), ❄️ `Freeze` (`#38bdf8`), 🛡️❄️ `Freeze Immunity` (`8s`), ⚡ `Shock` (`#a855f7`), 🩸 `Bleed` (`#10b981`), ☀️ `Luminous Mark` (`#fbbf24`), 🌑 `Corrosion` (`#9333ea`), 🛡️💔 `Defenseless` (`#ef4444`).
-       - **Layer 2 (Center Sprite Zone)**: 100% unobstructed 2D Pixel Art monster/boss sprite (`drawEldritchBossPart`) with zero overlapping UI or text. Clicking/tapping the sprite body sets `manualFocusId`.
-       - **Layer 3 (Below Feet `-bottom-8`)**: Enemy HP Bar + 5-Segment Stagger Bar + Name & Elemental Weakness badge (`WEAK: 🔥`) placed strictly beneath the monster's feet, while the main Boss HUD remains pinned at the top edge of the battlefield (`top-2`).
-  3. **Upgrade All 22 Major Arcana Cards to 16-Bit Pixel Art Tarot Cards**:
-     - Implements `drawPixelTarotCard(canvas, arcanaId, tick)` on a `32×40` pixel grid (`image-rendering: pixelated`) with a pixel gold border, twinkling stars, Roman numeral header, and unique 16-bit pixel art iconography for all 22 cards (`0. The Fool` through `XXI. The World`).
-
----
-
-## 2. User Experience & Visual Design
-
-- **3-Layer Enemy / Boss Part Container Layout**:
-  ```
-  ┌──────────────────────────────────────────────────────┐
-  │  Layer 1 (-top-7): [🔥 3.8s] [🩸 x5] [🛡️💔 2.4s]     │  ← 22×22px SVG Status Badges ONLY
-  ├──────────────────────────────────────────────────────┤
-  │                                                      │
-  │  Layer 2 (Center):   100% Unobstructed 2D Pixel Art  │  ← Zero UI/Text Over Sprite Body
-  │                      Monster / Boss Part Sprite      │
-  │                                                      │
-  ├──────────────────────────────────────────────────────┤
-  │  Layer 3 (-bottom-8): [████████░░] HP Bar            │
-  │                       [▪][▪][▪][▫][▫] 5-Bar Stagger  │  ← Below Monster Feet Only
-  │                       Left Arm · WEAK: 🔥            │
-  └──────────────────────────────────────────────────────┘
-  ```
-- **16-Bit Pixel Art Tarot Cards (`32×40` Grid)**:
-  - Each of the 22 Major Arcana cards (`ARCANA_00` to `ARCANA_21`) renders on a `32×40` HTML5 `<canvas>` scaled up with `image-rendering: pixelated`:
-    - Outer 2px ornate pixel gold frame (`#fbbf24` / `#ca8a04` with `#fde047` corner studs).
-    - Animated twinkling star pixels (`tick`-driven) in the card night sky backdrop.
-    - Distinct 16-bit pixel art centerpiece for every card (`0. The Fool` cliff & star, `I. The Magician` infinity wand, `II. The High Priestess` crescent veil, `III. The Empress` emerald crown, `IV. The Emperor` crimson throne, `V. The Hierophant` triple cross keys, `VI. The Lovers` twin solar/lunar hearts, `VII. The Chariot` winged war wheel, `VIII. Strength` golden lion jaws, `IX. The Hermit` astral lantern, `X. Wheel of Fortune` 8-spoke destiny wheel, `XI. Justice` balanced scales & sword, `XII. The Hanged Man` inverted halo rune, `XIII. Death` pale reaper scythe, `XIV. Temperance` twin alchemy chalices, `XV. The Devil` abyssal horned sigil, `XVI. The Tower` lightning-struck spire, `XVII. The Star` 8-pointed polar star, `XVIII. The Moon` twin towers & eclipse, `XIX. The Sun` radiant solar face, `XX. Judgement` archangel horn, `XXI. The World` cosmic laurel wreath).
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Remove In-Canvas Enemy Bars & Render 3-Layer DOM Overlay**
-  - *Chosen Approach*: Remove the old canvas-drawn HP/name/debuff rectangles from `renderBattlefieldCanvas` and render positioned DOM containers over each alive enemy's `(x, y)` percentage coordinates (`left: ${(b.x / 1040) * 100}%`, `top: ${(b.y / 430) * 100}%`).
-  - *Why*: Guarantees crisp `22×22px` SVG status badges above the head (`-top-7`), a 100% clean pixel sprite in the center, and sharp HP + 5-bar Stagger + `WEAK` badges below the feet (`-bottom-8`) at any screen resolution.
-- **Decision 2: Unify 22 Major Arcana Pixel Art Cards Across Combat & Wiki**
-  - *Chosen Approach*: Sync `BLESSING_CARDS` with all 22 Major Arcana (`ARCANA_00` through `ARCANA_21`) and render `<PixelTarotCardCanvas>` in both the Every-5-Floor Tarot popup (`[AUTO CARD: 6.0s]`) and the Wiki Compendium.
-  - *Why*: Ensures every card drawn during a Spire run has its authentic 16-bit pixel art illustration and can also be inspected anytime in the Wiki.
-
----
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│            2D PIXEL ENGINE + 3-LAYER MONSTER HUD + PIXEL TAROT             │
-├────────────────────────────────────────────────────────────────────────────┤
-│  1. 2D Pixel Art Canvas (src/engine/pixelRenderer.ts)                      │
-│     ├─ renderBattlefieldCanvas(): Draws parallax sky/ruins, 5 Hero sprites,│
-│     │    and 100% clean Boss/Minion sprites (no overlapping bars on body)  │
-│     └─ drawPixelTarotCard(canvas, arcanaId, tick): 32x40 pixelated canvas  │
-│          with gold pixel frame, twinkling stars & 22 unique Arcana sprites │
-├────────────────────────────────────────────────────────────────────────────┤
-│  2. 3-Layer Enemy DOM Container Overlay (src/App.tsx)                      │
-│     ├─ Layer 1 (-top-7):   flex gap-1 of 22x22px SVG Status Badges         │
-│     │                      (Burn, Freeze, Freeze Immune, Shock, Bleed,     │
-│     │                       Luminous Mark, Corrosion, Defenseless)         │
-│     ├─ Layer 2 (Center):   Transparent sprite hit-box (100% clean sprite)  │
-│     └─ Layer 3 (-bottom-8): HP Bar + 5-Segment Stagger + Name & WEAK icon  │
-├────────────────────────────────────────────────────────────────────────────┤
-│  3. 22 Major Arcana Tarot Modal & Wiki Compendium                          │
-│     ├─ Every-5-Floor Modal: 3 cards with <PixelTarotCardCanvas /> + 6.0s   │
-│     └─ WikiModal: Full 22-card 16-Bit Pixel Art Arcana gallery             │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+## 6. Hook Fixes & Codebase Cleanup
+- **Gambit `BOSS_STAGGER_OPEN`**: Remove `&& hero.id === 'H04'` in `canFireGambitChain` (`src/App.tsx`) so any Resonator configured with `BOSS_STAGGER_OPEN` can trigger their Chain skill when the boss Stagger gauge is open.
+- **Tarot Blessing Hooks (`src/engine/combatEngine.ts` & `src/App.tsx`)**:
+  - `ARCANA_07 (The Chariot)`: Team SPD `+12% / +20% / +35%`
+  - `ARCANA_08 (Strength)`: Team Break Power `+20% / +35% / +60%`
+  - `ARCANA_09 (The Hermit)`: Frontline wave-start Shield (`20% / 25% / 45% Max HP`) + `20%` Thorns damage reflection
+  - `ARCANA_10 (Wheel of Fortune)`: Team Crit Rate (`+12% / +15% / +30%`) & Crit DMG (`+25% / +40% / +75%`)
+  - `ARCANA_16 (The Tower)`: Breaking 1 Boss Stagger bar triggers a `100% / 150% / 250%` Boss ATK explosion on all boss parts
+  - `ARCANA_17 (The Star)`: Wave-start Ultimate Energy `+25% / +30% / +60%`
+  - `ARCANA_20 (Judgement)`: While Boss is Staggered, all allies deal `+35% / +60% / +100%` bonus DMG
+  - `ARCANA_21 (The World)`: Casting an Ultimate has `25% / 35% / 60%` chance to immediately refund `50%` Energy
+- **Delete Unused File**: Delete `/src/components/VoxelScene3D.tsx` via `delete_file`.

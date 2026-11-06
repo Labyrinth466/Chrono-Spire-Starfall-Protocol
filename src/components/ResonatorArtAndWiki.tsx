@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { ELEMENT_META, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
+import { ELEMENT_META, ElementType, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
 import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment.ts';
-import { drawPixelHeroSprite, drawPixelTarotCard } from '../engine/pixelRenderer.ts';
+import { drawPixelHeroSprite, drawPixelTarotCard, drawPixelTarotCardBack } from '../engine/pixelRenderer.ts';
+import { getRecommendedCounterElement } from '../engine/combatEngine.ts';
 
 export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: string }> = ({ hero, className = '' }) => {
   const elMeta = ELEMENT_META[hero.element];
@@ -196,6 +197,112 @@ export const PixelTarotCardCanvas: React.FC<{
   );
 };
 
+export const PixelTarotCardBackCanvas: React.FC<{
+  className?: string;
+}> = ({ className = 'w-16 h-20' }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let animId = 0;
+    const start = performance.now();
+    const render = (now: number) => {
+      const tick = (now - start) / 1000;
+      const canvas = canvasRef.current;
+      if (canvas) {
+        drawPixelTarotCardBack(canvas, tick);
+      }
+      animId = requestAnimationFrame(render);
+    };
+    animId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(animId);
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={32}
+      height={40}
+      style={{ imageRendering: 'pixelated' }}
+      className={`select-none shrink-0 rounded-sm shadow-md ${className}`}
+    />
+  );
+};
+
+export const ElementalWheelBadge: React.FC<{
+  activeBossElement?: ElementType;
+  compact?: boolean;
+}> = ({ activeBossElement = 'Fire', compact = false }) => {
+  const counterEl = getRecommendedCounterElement(activeBossElement);
+  const cycleNodes: { el: ElementType; icon: string; color: string; x: number; y: number }[] = [
+    { el: 'Fire', icon: '🔥', color: '#f97316', x: 40, y: 14 },
+    { el: 'Cryo', icon: '❄️', color: '#38bdf8', x: 66, y: 40 },
+    { el: 'Wind', icon: '🌪️', color: '#34d399', x: 40, y: 66 },
+    { el: 'Electro', icon: '⚡', color: '#a855f7', x: 14, y: 40 },
+  ];
+
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg bg-slate-950/90 border border-slate-700/80 shadow-lg backdrop-blur-sm select-none ${
+        compact ? 'px-2 py-1' : 'px-2.5 py-1.5'
+      }`}
+      title="Natural Elemental Cycle: 🔥 Fire > ❄️ Cryo > 🌪️ Wind > ⚡ Electro > 🔥 Fire | ☀️ Light ↔ 🌑 Dark (+30% DMG, +25% Break, +15% Crit)"
+    >
+      <svg viewBox="0 0 80 80" className={compact ? 'w-10 h-10 shrink-0' : 'w-12 h-12 shrink-0'}>
+        <defs>
+          <marker id="elArrow" markerWidth="4" markerHeight="4" refX="2.5" refY="2" orient="auto">
+            <path d="M0,0 L4,2 L0,4 Z" fill="#94a3b8" />
+          </marker>
+        </defs>
+        {/* Outer Cycle Ring */}
+        <circle cx="40" cy="40" r="26" fill="none" stroke="#334155" strokeWidth="1.5" strokeDasharray="3 2" />
+        {/* Directional Arrows: Fire(top)->Cryo(right)->Wind(bottom)->Electro(left)->Fire(top) */}
+        <path d="M49,17 L62,30" stroke="#f97316" strokeWidth="1.5" markerEnd="url(#elArrow)" />
+        <path d="M62,50 L49,63" stroke="#38bdf8" strokeWidth="1.5" markerEnd="url(#elArrow)" />
+        <path d="M31,63 L18,50" stroke="#34d399" strokeWidth="1.5" markerEnd="url(#elArrow)" />
+        <path d="M18,30 L31,17" stroke="#a855f7" strokeWidth="1.5" markerEnd="url(#elArrow)" />
+
+        {cycleNodes.map((n) => {
+          const isBoss = activeBossElement === n.el;
+          const isCounter = counterEl === n.el;
+          return (
+            <g key={n.el}>
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={isCounter || isBoss ? 10 : 8}
+                fill="#090d16"
+                stroke={isCounter ? '#fde047' : isBoss ? '#f43f5e' : n.color}
+                strokeWidth={isCounter || isBoss ? '2' : '1.2'}
+              />
+              <text x={n.x} y={n.y + 3.5} textAnchor="middle" fontSize="10">
+                {n.icon}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="text-[10px] leading-tight">
+        <div className="font-bold text-slate-200 flex items-center gap-1">
+          <span>🔥▸❄️▸🌪️▸⚡▸🔥</span>
+          <span className="text-amber-300">· ☀️↔🌑</span>
+        </div>
+        <div className="text-slate-400 mt-0.5">
+          Use{' '}
+          <span className="font-bold text-amber-300">
+            {counterEl}
+          </span>{' '}
+          vs{' '}
+          <span className="font-semibold text-rose-300">
+            {activeBossElement}
+          </span>{' '}
+          <span className="text-emerald-400 font-mono">(+30% DMG)</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4">
@@ -203,10 +310,10 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
           <div>
             <h2 className="text-lg font-bold text-slate-100 font-display">
-              Chrono Spire: Starfall Protocol — Official Game Wiki & Balance Sheet (v2.1)
+              Chrono Spire: Starfall Protocol — Official Game Wiki & Balance Sheet (v2.3)
             </h2>
             <p className="text-xs text-slate-400">
-              Single Source of Truth: 18 Day-1 Resonators · 5-Slot Gear · 4 Formations · 9 Reactions · +15 Fail Stack Pity · 40 Constellation Nodes
+              Single Source of Truth: 23 Resonators (5 R Starter · 6 SR · 12 SSR) · Natural Cycle (🔥&gt;❄️&gt;🌪️&gt;⚡&gt;🔥, ☀️↔🌑) · 5-Zone Parallax
             </p>
           </div>
           <button
@@ -218,10 +325,10 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-8 text-xs text-slate-300">
-          {/* Section 1: 18 Resonators Base Stats Table */}
+          {/* Section 1: 23 Resonators Base Stats Table */}
           <section>
             <h3 className="text-sm font-semibold text-amber-300 mb-3">
-              01. Base Stats & 18 Day-1 Resonator Roster (Lv.1 / Lv.100 & 5-Star Capstone)
+              01. Base Stats & 23 Resonator Roster (5 Starter R · 6 SR · 12 SSR)
             </h3>
             <div className="overflow-x-auto border border-slate-800 rounded-lg">
               <table className="w-full text-left border-collapse font-mono tabular-nums">
