@@ -44,6 +44,8 @@ import {
 } from './data/constellations.ts';
 import {
   BattleSubMode,
+  BgmEngineStatus,
+  BgmThemeMode,
   BossPartId,
   BossPartUnit,
   calculateTotalStatusProcChance,
@@ -56,8 +58,11 @@ import {
   CPBreakdownItem,
   createFloorEncounter,
   CutInBannerState,
+  evaluateElementalCounter,
   FloatingText,
   getFloorSegmentBp,
+  getRecommendedCounterElement,
+  getRecommendedFloorCP,
   HeroProgress,
   ImpactShockwave,
   runBalanceSelfChecks,
@@ -76,7 +81,12 @@ import {
   YAxis,
 } from 'recharts';
 import { Particle, renderBattlefieldCanvas } from './engine/pixelRenderer.ts';
-import { PixelPreviewCanvas, ResonatorSplashArt, WikiModal } from './components/ResonatorArtAndWiki.tsx';
+import {
+  PixelPreviewCanvas,
+  PixelTarotCardCanvas,
+  ResonatorSplashArt,
+  WikiModal,
+} from './components/ResonatorArtAndWiki.tsx';
 
 type GameShellState = 'TITLE_MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 type MainTab = 'BATTLE' | 'HEROES' | 'FORGE' | 'SUMMON' | 'REWIND';
@@ -499,6 +509,15 @@ export default function App() {
   const [autoUltimate, setAutoUltimate] = useState(true);
   const [blessingChoices, setBlessingChoices] = useState<BlessingCardSpec[] | null>(null);
   const [tarotAutoTimer, setTarotAutoTimer] = useState<number>(6.0);
+  const [bgmStatus, setBgmStatus] = useState<BgmEngineStatus>(sfx.bgmStatus);
+  const [bgmTheme, setBgmTheme] = useState<BgmThemeMode>(sfx.bgmTheme);
+
+  useEffect(() => {
+    return sfx.subscribe(() => {
+      setBgmStatus(sfx.bgmStatus);
+      setBgmTheme(sfx.bgmTheme);
+    });
+  }, []);
 
   // Computed Party Resonance & All Hero Stats
   const partyResonance = useMemo(() => computePartyResonance(partyIds), [partyIds]);
@@ -705,31 +724,43 @@ export default function App() {
         };
       });
 
-      const encounter = createFloorEncounter(targetFloor, encounterMode);
+        const domainMap: Record<string, string> = {
+          BOUNTY: 'GOLD_VAULT',
+          STRIKER: 'DOMAIN_I',
+          DEFENDER: 'DOMAIN_II',
+          TACTICIAN: 'DOMAIN_III',
+        };
+        const activeChallenge = activeDomainChallengeRef.current;
+        const mappedDomainId = activeChallenge ? domainMap[activeChallenge.domainId] : undefined;
+        const encounter = createFloorEncounter(targetFloor, encounterMode, mappedDomainId);
 
-      simRef.current = {
-        ...simRef.current,
-        mode: encounterMode,
-        floor: targetFloor,
-        waveElapsed: 0,
-        guildRaidDamage: 0,
-        isBerserk: false,
-        staggerSegments: encounter.staggerSegments,
-        currentSegmentBp: encounter.maxSegmentBp,
-        maxSegmentBp: encounter.maxSegmentBp,
-        isStaggered: false,
-        staggerTimer: 0,
-        staggerWarningTimer: 0,
-        antiStaggerTimer: 0,
-        manualFocusId: null,
-        firestormCd: 0,
-        heroes: newHeroes,
-        bossParts: encounter.bossParts,
-        shockwaves: [],
-      };
-    },
-    [partyIds, formationId, blessings, heroProgress, computedStatsMap, battleSubMode]
-  );
+        const nextTheme: BgmThemeMode =
+          encounter.isBossFloor || encounterMode === 'GUILD_RAID' ? 'BOSS' : 'CORRIDOR';
+        sfx.setBgmTheme(nextTheme);
+
+        simRef.current = {
+          ...simRef.current,
+          mode: encounterMode,
+          floor: targetFloor,
+          waveElapsed: 0,
+          guildRaidDamage: 0,
+          isBerserk: false,
+          staggerSegments: encounter.staggerSegments,
+          currentSegmentBp: encounter.maxSegmentBp,
+          maxSegmentBp: encounter.maxSegmentBp,
+          isStaggered: false,
+          staggerTimer: 0,
+          staggerWarningTimer: 0,
+          antiStaggerTimer: 0,
+          manualFocusId: null,
+          firestormCd: 0,
+          heroes: newHeroes,
+          bossParts: encounter.bossParts,
+          shockwaves: [],
+        };
+      },
+      [partyIds, formationId, blessings, heroProgress, computedStatsMap, battleSubMode]
+    );
 
   // Re-initialize wave when changing formation/party or switching live combat sub-modes
   useEffect(() => {
@@ -1171,6 +1202,8 @@ export default function App() {
         }
 
         if (reactionTriggered) {
+          sim.hitstopTimer = 0.05;
+          sim.shakeMag = Math.max(sim.shakeMag, 7);
           pushLog(`${hero.data.name} triggered ${reactionTriggered} on ${target.name}!`);
           spawnBurstParticles(target.x, target.y, ELEMENT_META[hero.data.element].color, 22);
           spawnShockwave(target.x, target.y, ELEMENT_META[hero.data.element].color, '#fde047', 78);
@@ -1179,13 +1212,20 @@ export default function App() {
           if (yuzuki) yuzuki.energy = Math.min(100, yuzuki.energy + 15);
         }
 
+        // Elemental Advantage / Counter Evaluation (WEAK! +30% DMG / +25% BP / +15% Crit vs RESIST -25% DMG / -20% BP)
+        const counterInfo = evaluateElementalCounter(hero.data.element, target.element || 'Dark');
+
         // Crit Rate & Crit DMG calculation
         const hasBurn = target.debuffs.some((d) => d.type === 'Burn');
         const hasLuminous = target.debuffs.some((d) => d.type === 'Luminous Mark');
         const hasCorrosion = target.debuffs.some((d) => d.type === 'Corrosion');
         const bleedEntry = target.debuffs.find((d) => d.type === 'Bleed');
 
-        let critChance = hero.stats.critRate + hero.buffs.critRatePct + (hasLuminous ? 20 : 0);
+        let critChance =
+          hero.stats.critRate +
+          hero.buffs.critRatePct +
+          counterInfo.bonusCritRate +
+          (hasLuminous ? 20 : 0);
         if (hero.id === 'H01' && hero.prog.stars >= 4 && hasBurn) critChance += 20;
         if (hero.id === 'H16' && skill.type === 'Ultimate' && target.hp / target.maxHp < 0.3) critChance = 100;
 
@@ -1208,7 +1248,7 @@ export default function App() {
         const defMitigation = 100 / (100 + effectiveDef * 0.25);
 
         // Skill Type & Set Multipliers
-        let bonusMult = reactionDmgMult;
+        let bonusMult = reactionDmgMult * counterInfo.dmgMult;
         if (skill.type === 'Basic' && hero.stats.fourPieceSet === 'Volatus') bonusMult *= 1.4;
         if (skill.type === 'Chain') bonusMult *= 1 + (partyResonance.chainDmgPct + (hero.stats.activeSets.some((s) => s.set === 'Astral Nexus') ? 25 : 0)) / 100;
         if (skill.type === 'Ultimate') {
@@ -1256,7 +1296,7 @@ export default function App() {
           finalDmg -= absorbed;
         }
         target.hp = Math.max(0, target.hp - finalDmg);
-        target.hitFlash = 0.14;
+        target.hitFlash = 0.08;
 
         // Luminous Mark Lifesteal (8%)
         if (hasLuminous && hero.hp > 0) {
@@ -1265,22 +1305,56 @@ export default function App() {
 
         if (skill.type === 'Basic') sfx.play(isCrit ? 'crit' : 'hit');
         const elColor = ELEMENT_META[hero.data.element].color;
+        const isWeak = counterInfo.tag === 'WEAK!';
+        const isResist = counterInfo.tag === 'RESIST';
+        const floatColor = reactionTriggered
+          ? '#fde047'
+          : isWeak
+          ? '#f59e0b'
+          : isResist
+          ? '#94a3b8'
+          : isCrit
+          ? elColor
+          : '#f8fafc';
+        const floatScale = reactionTriggered
+          ? 1.42
+          : isWeak
+          ? 1.26
+          : isResist
+          ? 0.88
+          : isCrit
+          ? 1.2
+          : 0.98;
+        const counterTagLabel =
+          counterInfo.tag === 'WEAK!'
+            ? 'WEAK! +30%'
+            : counterInfo.tag === 'RESIST'
+            ? 'RESIST -20%'
+            : undefined;
+        const floatSubtext =
+          reactionTriggered && counterTagLabel
+            ? `${reactionTriggered} · ${counterTagLabel}`
+            : reactionTriggered || counterTagLabel;
+
         spawnFloatingText(
           `${finalDmg.toLocaleString()}${isCrit ? '!' : ''}`,
           target.x,
           target.y,
-          reactionTriggered ? '#fde047' : isCrit ? elColor : '#f8fafc',
-          reactionTriggered ? 1.42 : isCrit ? 1.22 : 0.98,
-          reactionTriggered || undefined
+          floatColor,
+          floatScale,
+          floatSubtext
         );
-        if (isCrit || skill.type === 'Ultimate') {
-          spawnBurstParticles(target.x, target.y, elColor, skill.type === 'Ultimate' ? 18 : 8);
-        }
+        spawnBurstParticles(
+          target.x,
+          target.y,
+          isWeak ? '#fbbf24' : elColor,
+          skill.type === 'Ultimate' ? 20 : isCrit || isWeak ? 10 : 5
+        );
 
-        // Break Damage Formula (Module 2.3): BP = Base * (BreakPower% / 100) * ShockMultiplier
+        // Break Damage Formula (Module 2.3): BP = Base * (BreakPower% / 100) * ShockMultiplier * CounterBpMult
         const shockMult = target.debuffs.some((d) => d.type === 'Shock') ? 1.35 : 1.0;
         const totalBreakPct = hero.stats.breakPower + hero.buffs.breakPct;
-        const bpDealt = Math.round(skill.breakPower * (totalBreakPct / 100) * shockMult);
+        const bpDealt = Math.round(skill.breakPower * (totalBreakPct / 100) * shockMult * counterInfo.bpMult);
         applyBreakDamage(sim, bpDealt);
 
         // Status Proc Chance Budget (SSOT v2.1 Module 3.2):
@@ -1723,16 +1797,14 @@ export default function App() {
         tickSimulation(dt);
       }
 
-      // Render Canvas
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
+      if (canvasRef.current && battleSubMode !== 'DOMAINS') {
+        const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
           const sim = simRef.current;
           renderBattlefieldCanvas(
             ctx,
-            canvas.width,
-            canvas.height,
+            canvasRef.current.width,
+            canvasRef.current.height,
             now / 1000,
             sim.heroes,
             sim.bossParts,
@@ -2442,9 +2514,32 @@ export default function App() {
           </button>
           <button
             onClick={() => {
+              sfx.generateLyriaBgm(bgmTheme);
+            }}
+            title={
+              bgmStatus === 'LYRIA_ACTIVE'
+                ? `Lyria 3 AI BGM Active (${bgmTheme} Theme)`
+                : 'Generate Lyria 3 AI BGM Track (Procedural Web Audio synth plays automatically while loading)'
+            }
+            className={`px-2 py-1 rounded border text-[11px] cursor-pointer whitespace-nowrap ${
+              bgmStatus === 'LYRIA_ACTIVE'
+                ? 'bg-purple-500/20 border-purple-400/60 text-purple-200'
+                : bgmStatus === 'LYRIA_LOADING'
+                ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+            }`}
+          >
+            {bgmStatus === 'LYRIA_ACTIVE'
+              ? `🎵 Lyria 3 (${bgmTheme === 'BOSS' ? 'Boss' : 'Spire'})`
+              : bgmStatus === 'LYRIA_LOADING'
+              ? '⏳ Lyria 3 Synth...'
+              : '🎵 Generate Lyria BGM'}
+          </button>
+          <button
+            onClick={() => {
               const next = !muted;
               setMuted(next);
-              sfx.muted = next;
+              sfx.setMuted(next);
             }}
             className="px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-white cursor-pointer whitespace-nowrap"
           >
@@ -2748,32 +2843,269 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              /*Isolated 60FPS Canvas Stage (Spire Climber / 90s Guild Raid / 1v1 Async Arena) */
+              /* Isolated 60FPS 2D Pixel Art HD-2D Canvas Arena (Spire Climber / 90s Guild Raid / 1v1 Async Arena) */
               <div className="relative flex-1 min-h-0 w-full overflow-hidden">
                 <canvas
                   ref={canvasRef}
                   width={1040}
                   height={430}
                   onClick={handleCanvasClick}
-                  className="w-full h-full object-cover cursor-crosshair"
+                  style={{ imageRendering: 'pixelated' }}
+                  className="w-full h-full object-fill cursor-crosshair block"
                 />
 
-                {/* TOP-LEFT SQUAD CP & ACTIVE DOMAIN CHALLENGE BANNER ON BATTLEFIELD */}
-                <div className="pointer-events-auto absolute top-2 left-3 z-30 flex items-center gap-2">
-                  <div className="px-3 py-1 rounded-lg bg-slate-950/90 border border-amber-400/60 shadow-lg text-xs font-mono font-bold text-amber-300 inline-flex items-center gap-1.5">
-                    <span>⚔️ SQUAD CP: {squadCP.toLocaleString()}</span>
-                    <CPInfoTooltip title="How Squad CP Works" formula={SQUAD_CP_FORMULA} />
-                  </div>
-                  {activeDomainChallenge && (
-                    <div className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-400/70 text-[11px] font-mono font-bold text-rose-200">
-                      🏰 {activeDomainChallenge.domainId} · Tier {activeDomainChallenge.tier} Boss
-                    </div>
-                  )}
+                {/* 3-LAYER VERTICAL ENEMY / BOSS PART CONTAINERS ANCHORED TO 2D CANVAS */}
+                <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+                  {hudState.bossParts
+                    .filter((b) => b.alive && b.hp > 0)
+                    .map((part) => {
+                      const leftPct = (part.x / 1040) * 100;
+                      const topPct = (part.y / 430) * 100;
+                      const isMain = part.id === 'BOSS_MAIN';
+                      const isFocused = hudState.manualFocusId === part.id;
+                      const hpPct = Math.max(0, Math.min(100, (part.hp / Math.max(1, part.maxHp)) * 100));
+                      const counterEl = getRecommendedCounterElement(part.element);
+                      const elIcons: Record<string, string> = {
+                        Fire: '🔥',
+                        Cryo: '❄️',
+                        Wind: '🌪️',
+                        Electro: '⚡',
+                        Light: '☀️',
+                        Dark: '🌑',
+                      };
+
+                      // Merge identical status types into a single badge with stack count or remaining seconds
+                      const mergedMap = new Map<
+                        string,
+                        { type: string; stacks: number; remaining: number }
+                      >();
+                      part.debuffs.forEach((d) => {
+                        const prev = mergedMap.get(d.type);
+                        if (prev) {
+                          prev.stacks += d.stacks;
+                          prev.remaining = Math.max(prev.remaining, d.remaining);
+                        } else {
+                          mergedMap.set(d.type, {
+                            type: d.type,
+                            stacks: d.stacks,
+                            remaining: d.remaining,
+                          });
+                        }
+                      });
+                      if (part.freezeResistTimer > 0) {
+                        mergedMap.set('FreezeImmunity', {
+                          type: 'FreezeImmunity',
+                          stacks: 1,
+                          remaining: part.freezeResistTimer,
+                        });
+                      }
+                      const mergedStatuses = Array.from(mergedMap.values());
+
+                      const statusMeta: Record<string, { color: string; label: string }> = {
+                        Burn: { color: '#f97316', label: 'Burn' },
+                        Freeze: { color: '#38bdf8', label: 'Freeze' },
+                        FreezeImmunity: { color: '#38bdf8', label: 'Freeze Immunity' },
+                        Shock: { color: '#a855f7', label: 'Shock' },
+                        Bleed: { color: '#10b981', label: 'Bleed' },
+                        'Luminous Mark': { color: '#fbbf24', label: 'Luminous Mark' },
+                        Corrosion: { color: '#9333ea', label: 'Corrosion' },
+                        Defenseless: { color: '#ef4444', label: 'Defenseless' },
+                        Slow: { color: '#38bdf8', label: 'Slow' },
+                      };
+
+                      return (
+                        <div
+                          key={part.id}
+                          style={{
+                            left: `${leftPct}%`,
+                            top: `${topPct}%`,
+                            width: isMain ? '124px' : '92px',
+                            height: isMain ? '118px' : '82px',
+                          }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-between select-none"
+                        >
+                          {/* LAYER 1 (ABOVE HEAD -top-7): 22x22px SVG Status Badges ONLY (Zero Text Labels) */}
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 whitespace-nowrap">
+                            {mergedStatuses.map((st) => {
+                              const meta = statusMeta[st.type] || {
+                                color: '#94a3b8',
+                                label: st.type,
+                              };
+                              const badgeSub =
+                                st.stacks > 1
+                                  ? `x${st.stacks}`
+                                  : `${st.remaining.toFixed(1)}s`;
+                              return (
+                                <div
+                                  key={st.type}
+                                  title={`${meta.label} (${badgeSub})`}
+                                  style={{ borderColor: meta.color, color: meta.color }}
+                                  className="relative w-[22px] h-[22px] rounded bg-slate-950/95 border flex items-center justify-center shadow-md"
+                                >
+                                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current">
+                                    {st.type === 'Burn' && (
+                                      <path d="M8 1.5C5.5 5 3.5 6.8 3.5 10a4.5 4.5 0 009 0c0-3.2-2-5-4.5-8.5zm0 10.5a2 2 0 01-2-2c0-1.2.8-2.2 2-3.8 1.2 1.6 2 2.6 2 3.8a2 2 0 01-2 2z" />
+                                    )}
+                                    {(st.type === 'Freeze' || st.type === 'Slow') && (
+                                      <path d="M7.2 1h1.6v5.1l3.6-3.6 1.1 1.1-3.6 3.6H15v1.6H9.9l3.6 3.6-1.1 1.1-3.6-3.6V15H7.2V9.9l-3.6 3.6-1.1-1.1 3.6-3.6H1V7.2h5.1L2.5 3.6l1.1-1.1 3.6 3.6V1z" />
+                                    )}
+                                    {st.type === 'FreezeImmunity' && (
+                                      <path d="M8 1L2.5 3.5v4.2C2.5 11.5 4.9 14.3 8 15c3.1-.7 5.5-3.5 5.5-7.3V3.5L8 1zm0 3l1.2 2.4L11.6 7l-2 1.8.5 2.6L8 10.1 5.9 11.4l.5-2.6-2-1.8 2.4-.6L8 4z" />
+                                    )}
+                                    {st.type === 'Shock' && (
+                                      <polygon points="9.5,1 3,9 7.8,9 6.2,15 13,7 8.2,7" />
+                                    )}
+                                    {st.type === 'Bleed' && (
+                                      <path d="M8 1.5C5.2 6 3.8 8.2 3.8 10.5a4.2 4.2 0 008.4 0C12.2 8.2 10.8 6 8 1.5z" />
+                                    )}
+                                    {st.type === 'Luminous Mark' && (
+                                      <path d="M8 3.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zM8 0.5l1.2 2.2H6.8L8 0.5zm0 15l-1.2-2.2h2.4L8 15.5zM0.5 8l2.2-1.2v2.4L0.5 8zm15 0l-2.2 1.2V6.8L15.5 8z" />
+                                    )}
+                                    {st.type === 'Corrosion' && (
+                                      <path d="M8 2a5 5 0 00-5 5c0 1.8.9 3.3 2.2 4.1V14h5.6v-2.9C12.1 10.3 13 8.8 13 7a5 5 0 00-5-5zm-2 5.5a1.2 1.2 0 110-2.4 1.2 1.2 0 010 2.4zm4 0a1.2 1.2 0 110-2.4 1.2 1.2 0 010 2.4z" />
+                                    )}
+                                    {st.type === 'Defenseless' && (
+                                      <path d="M8 1L2.5 3.5v4.2C2.5 11.5 4.9 14.3 8 15c3.1-.7 5.5-3.5 5.5-7.3V3.5L8 1zm-.6 2.5h1.5L7.4 7.5h2.1L6.8 13l.8-4.2H5.8l1.6-5.3z" />
+                                    )}
+                                  </svg>
+                                  <span className="absolute bottom-0 right-0.5 text-[7px] font-mono font-extrabold leading-none text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]">
+                                    {badgeSub}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* LAYER 2 (CENTER): 100% Unobstructed 2D Pixel Art Sprite Click Box (Zero Overlapping UI/Text) */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              simRef.current.manualFocusId =
+                                simRef.current.manualFocusId === part.id ? null : part.id;
+                              sfx.play('hit');
+                            }}
+                            title={`Target ${part.name} (Weak to ${counterEl})`}
+                            className="pointer-events-auto w-full h-full bg-transparent border-0 cursor-crosshair focus:outline-none"
+                          />
+
+                          {/* LAYER 3 (BELOW FEET -bottom-8): HP Bar + 5-Segment Stagger Bar + Name & WEAK Element Badge */}
+                          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-28 bg-slate-950/92 border border-slate-800 rounded px-1.5 py-1 space-y-0.5 shadow-md">
+                            {/* HP Bar */}
+                            <div className="relative h-1.5 w-full bg-slate-900 rounded-sm overflow-hidden border border-slate-700/80">
+                              <div
+                                className={`h-full transition-all duration-75 ${
+                                  hudState.isStaggered
+                                    ? 'bg-amber-400'
+                                    : isMain
+                                    ? 'bg-rose-500'
+                                    : 'bg-purple-500'
+                                }`}
+                                style={{ width: `${hpPct}%` }}
+                              />
+                            </div>
+
+                            {/* 5-Segment Stagger Bar */}
+                            <div className="grid grid-cols-5 gap-0.5">
+                              {[0, 1, 2, 3, 4].map((segIdx) => {
+                                const filledBars = hudState.staggerSegments;
+                                let segFill = 0;
+                                if (segIdx < filledBars - 1) segFill = 100;
+                                else if (segIdx === filledBars - 1) {
+                                  segFill =
+                                    (hudState.currentSegmentBp /
+                                      Math.max(1, hudState.maxSegmentBp)) *
+                                    100;
+                                }
+                                return (
+                                  <div
+                                    key={segIdx}
+                                    className="h-1 bg-slate-900 border border-amber-500/40 rounded-xs overflow-hidden"
+                                  >
+                                    <div
+                                      className="h-full bg-amber-400"
+                                      style={{ width: `${segFill}%` }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Name + Elemental Weakness Badge */}
+                            <div className="flex items-center justify-between gap-1 text-[8px] font-mono leading-none">
+                              <span
+                                className={`truncate font-bold ${
+                                  isFocused ? 'text-amber-300' : 'text-slate-200'
+                                }`}
+                              >
+                                {part.name}
+                              </span>
+                              <span className="shrink-0 text-amber-300 font-bold">
+                                WEAK: {elIcons[counterEl]}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
 
-                {/* COMPACT CENTERED TOP BOSS HUD BAR (Name + HP + Timer; Stagger & Cast Bar only during 4.0s Skill Charge) */}
+                {/* TOP-LEFT SQUAD CP VS RECOMMENDED CP & ELEMENTAL COUNTER CYCLE ON BATTLEFIELD */}
+                {(() => {
+                  const recCp = activeDomainChallenge
+                    ? DOMAIN_TIER_SPECS[activeDomainChallenge.tier].minCp
+                    : getRecommendedFloorCP(floor);
+                  const cpReady = squadCP >= recCp;
+                  return (
+                    <div className="pointer-events-auto absolute top-2 left-3 z-30 flex flex-wrap items-center gap-1.5 max-w-[360px]">
+                      <div className="px-2.5 py-1 rounded-lg bg-slate-950/90 border border-amber-400/60 shadow-lg text-[11px] font-mono font-bold text-amber-300 inline-flex items-center gap-1.5">
+                        <span>
+                          ⚔️ SQUAD CP: {squadCP.toLocaleString()} · REC: {recCp.toLocaleString()}
+                        </span>
+                        <span
+                          className={`px-1 py-0.2 rounded text-[9px] ${
+                            cpReady
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-400/50'
+                          }`}
+                        >
+                          {cpReady ? 'CLEAR READY' : 'UNDER-GEARED'}
+                        </span>
+                        <CPInfoTooltip title="How Squad CP Works" formula={SQUAD_CP_FORMULA} />
+                      </div>
+                      <div
+                        title="Elemental Counter Cycle: Fire > Wind > Electro > Cryo > Fire (+30% DMG, +25% Break Power, +15% Crit Rate | Disadvantage: -20% DMG, -15% Break Power). Light ↔ Dark deal mutual +30% DMG."
+                        className="px-2 py-0.5 rounded-md bg-slate-950/90 border border-slate-700/90 text-[10px] font-mono text-slate-200 inline-flex items-center gap-1"
+                      >
+                        <span>🔥 &gt; 🌪️ &gt; ⚡ &gt; ❄️ &gt; 🔥 · ☀️ ↔ 🌑</span>
+                      </div>
+                      {activeDomainChallenge && (
+                        <div className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-400/70 text-[11px] font-mono font-bold text-rose-200">
+                          🏰 {activeDomainChallenge.domainId} · Tier {activeDomainChallenge.tier} Boss
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* COMPACT CENTERED TOP BOSS HUD BAR (Name + Element & Counter + HP + Stagger + SVG Debuff Badges) */}
                 {(() => {
                   const mainBoss = hudState.bossParts.find((b) => b.id === 'BOSS_MAIN');
+                  const focusedPart =
+                    hudState.bossParts.find((b) => b.id === hudState.manualFocusId && b.alive) ||
+                    mainBoss ||
+                    hudState.bossParts.find((b) => b.alive) ||
+                    hudState.bossParts[0];
+                  const enemyEl = focusedPart?.element || 'Dark';
+                  const counterEl = getRecommendedCounterElement(enemyEl);
+                  const elIcons: Record<string, string> = {
+                    Fire: '🔥',
+                    Cryo: '❄️',
+                    Wind: '🌪️',
+                    Electro: '⚡',
+                    Light: '☀️',
+                    Dark: '🌑',
+                  };
+
                   const totalHp = mainBoss
                     ? mainBoss.hp
                     : hudState.bossParts.reduce((acc, b) => acc + b.hp, 0);
@@ -2789,9 +3121,12 @@ export default function App() {
                     ? Math.max(0, Math.min(100, ((4.0 - hudState.staggerWarningTimer) / 4.0) * 100))
                     : 0;
 
+                  const activeDebuffs = focusedPart ? focusedPart.debuffs : [];
+                  const freezeImmuneRem = focusedPart ? focusedPart.freezeResistTimer : 0;
+
                   return (
-                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-[340px] origin-top scale-[0.82] sm:scale-90 md:scale-100 z-30 bg-slate-950/90 border border-slate-800 rounded-md px-2.5 py-1.5 space-y-1 shadow-lg">
-                      <div className="flex items-center justify-between gap-2 text-[10px] font-mono tabular-nums">
+                    <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 w-[370px] origin-top scale-[0.82] sm:scale-90 md:scale-100 z-30 bg-slate-950/92 border border-slate-800 rounded-md px-2.5 py-1.5 space-y-1 shadow-lg">
+                      <div className="flex items-center justify-between gap-1.5 text-[10px] font-mono tabular-nums">
                         <span className="font-sans font-bold text-slate-100 truncate">
                           {battleSubMode === 'GUILD_RAID'
                             ? `🐉 Yog-Sothoth · ${hudState.guildRaidDamage.toLocaleString()}`
@@ -2812,12 +3147,30 @@ export default function App() {
                         </span>
                       </div>
 
+                      {/* Enemy Elemental Affinity & Recommended Counter Element Row */}
+                      <div className="flex items-center justify-between gap-1 text-[9px] font-mono">
+                        <span
+                          className="px-1.5 py-0.2 rounded border bg-slate-900/95 font-bold"
+                          style={{
+                            borderColor: `${ELEMENT_META[enemyEl].color}88`,
+                            color: ELEMENT_META[enemyEl].color,
+                          }}
+                        >
+                          {elIcons[enemyEl]} Enemy: {enemyEl}
+                        </span>
+                        <span
+                          className="px-1.5 py-0.2 rounded border bg-amber-500/15 border-amber-400/60 text-amber-200 font-bold"
+                        >
+                          WEAK TO: {elIcons[counterEl]} {counterEl} (+30% DMG)
+                        </span>
+                      </div>
+
                       {/* Compact HP Bar */}
                       <div className="relative h-3 bg-slate-900 rounded overflow-hidden border border-slate-700">
                         <div
                           className={`h-full transition-all duration-100 ${
                             hudState.isStaggered
-                              ? 'bg-amber-400 animate-pulse'
+                              ? 'bg-amber-400'
                               : mainBoss
                               ? 'bg-rose-600'
                               : 'bg-purple-600'
@@ -2837,6 +3190,73 @@ export default function App() {
                           )}
                         </div>
                       </div>
+
+                      {/* 22x22px SVG Status Badges on Top Boss HUD (No Text String Overlap) */}
+                      {(activeDebuffs.length > 0 || freezeImmuneRem > 0) && (
+                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                          {activeDebuffs.map((d) => {
+                            const debuffColors: Record<string, string> = {
+                              Burn: '#f97316',
+                              Freeze: '#38bdf8',
+                              Shock: '#a855f7',
+                              Bleed: '#10b981',
+                              'Luminous Mark': '#fbbf24',
+                              Corrosion: '#9333ea',
+                              Defenseless: '#ef4444',
+                              Slow: '#38bdf8',
+                            };
+                            const col = debuffColors[d.type] || '#94a3b8';
+                            const badgeSub =
+                              d.stacks > 1 ? `x${d.stacks}` : `${d.remaining.toFixed(1)}s`;
+                            return (
+                              <div
+                                key={d.type}
+                                title={`${d.type} (${badgeSub})`}
+                                style={{ borderColor: col, color: col }}
+                                className="relative w-[22px] h-[22px] rounded bg-slate-950 border flex items-center justify-center"
+                              >
+                                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 fill-current">
+                                  {d.type === 'Burn' && (
+                                    <path d="M8 1.5C5.5 5 3.5 6.8 3.5 10a4.5 4.5 0 009 0c0-3.2-2-5-4.5-8.5z" />
+                                  )}
+                                  {(d.type === 'Freeze' || d.type === 'Slow') && (
+                                    <polygon points="8,1 15,8 8,15 1,8" />
+                                  )}
+                                  {d.type === 'Shock' && (
+                                    <polygon points="9.5,1 3,9 7.8,9 6.2,15 13,7 8.2,7" />
+                                  )}
+                                  {d.type === 'Bleed' && (
+                                    <path d="M8 1.5C5.2 6 3.8 8.2 3.8 10.5a4.2 4.2 0 008.4 0C12.2 8.2 10.8 6 8 1.5z" />
+                                  )}
+                                  {d.type === 'Luminous Mark' && <circle cx="8" cy="8" r="5" />}
+                                  {d.type === 'Corrosion' && (
+                                    <path d="M8 2a5 5 0 00-5 5c0 1.8.9 3.3 2.2 4.1V14h5.6v-2.9C12.1 10.3 13 8.8 13 7a5 5 0 00-5-5z" />
+                                  )}
+                                  {d.type === 'Defenseless' && (
+                                    <path d="M8 1L2.5 3.5v4.2C2.5 11.5 4.9 14.3 8 15c3.1-.7 5.5-3.5 5.5-7.3V3.5L8 1z" />
+                                  )}
+                                </svg>
+                                <span className="absolute bottom-0 right-0.5 text-[7px] font-mono font-extrabold leading-none text-white">
+                                  {badgeSub}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {freezeImmuneRem > 0 && (
+                            <div
+                              title={`Freeze Immunity (${freezeImmuneRem.toFixed(1)}s)`}
+                              className="relative w-[22px] h-[22px] rounded bg-sky-950/90 border border-sky-400/70 text-sky-300 flex items-center justify-center"
+                            >
+                              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 fill-current">
+                                <path d="M8 1L2.5 3.5v4.2C2.5 11.5 4.9 14.3 8 15c3.1-.7 5.5-3.5 5.5-7.3V3.5L8 1z" />
+                              </svg>
+                              <span className="absolute bottom-0 right-0.5 text-[7px] font-mono font-extrabold leading-none text-white">
+                                {freezeImmuneRem.toFixed(0)}s
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Conditional Boss Skill Charge Bar + 5-Segment Stagger Gauge (Shown ONLY when staggerWarningTimer > 0) */}
                       {hudState.staggerWarningTimer > 0 && !hudState.isStaggered && (
@@ -3440,11 +3860,11 @@ export default function App() {
                       <ResonatorSplashArt hero={selectedHeroData} className="max-h-full w-auto scale-105" />
                     </div>
 
-                    <div className="absolute bottom-2.5 left-2.5 z-10 bg-slate-950/90 border border-amber-500/40 rounded-lg p-1.5 w-24 shadow-xl">
+                    <div className="absolute bottom-2.5 left-2.5 z-10 bg-slate-950/90 border border-amber-500/40 rounded-lg p-1.5 w-32 shadow-xl flex flex-col items-center">
                       <div className="text-[8px] font-mono text-amber-300 leading-none mb-0.5 text-center">
-                        2D Sprite
+                        2D Pixel Sprite
                       </div>
-                      <PixelPreviewCanvas hero={selectedHeroData} compact />
+                      <PixelPreviewCanvas hero={selectedHeroData} />
                     </div>
                   </div>
 
@@ -4183,13 +4603,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* RIGHT (2 Cols — Compact): IN-COMBAT PIXEL 2D PREVIEW + [TEST ULTIMATE] Button */}
+              {/* RIGHT (2 Cols — Compact): IN-COMBAT 2D PIXEL PREVIEW + [TEST ULTIMATE] Button */}
               <div className="col-span-12 lg:col-span-2 bg-[#0a0d18] border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between items-center text-center">
                 <div className="w-full">
                   <div className="text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider">
-                    PIXEL 2D PREVIEW
+                    2D PIXEL PREVIEW
                   </div>
-                  <p className="text-[9px] text-slate-400 mt-0.5">60fps Sprite</p>
+                  <p className="text-[9px] text-slate-400 mt-0.5">16-Bit HD-2D Sprite</p>
                 </div>
 
                 <div
@@ -4198,9 +4618,8 @@ export default function App() {
                   }`}
                 >
                   <PixelPreviewCanvas hero={featuredBannerHero} />
-                  <div className="w-20 h-2.5 rounded-full bg-purple-500/20 border border-purple-400/50 -mt-2" />
                   {ultTestPulse && (
-                    <div className="mt-1 text-[10px] font-mono font-bold text-purple-300 animate-pulse">
+                    <div className="mt-1 text-[10px] font-mono font-bold text-purple-300">
                       ⚡ {featuredBannerHero.skills.ultimate.name}!
                     </div>
                   )}
@@ -4284,7 +4703,7 @@ export default function App() {
                         Starfall Exchange Sanctuary · 1 Gacha Pull = 1 Starfall Shard
                       </div>
                       <h2 className="text-xl font-bold text-white font-display">
-                        🏛️ ร้านค้าแลกเปลี่ยน Starfall Exchange
+                        🏛️ Starfall Exchange Sanctuary
                       </h2>
                     </div>
                     <div className="flex items-center gap-3">
@@ -4295,7 +4714,7 @@ export default function App() {
                         onClick={() => setExchangeShopOpen(false)}
                         className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 hover:text-white cursor-pointer"
                       >
-                        ✕ ปิดหน้าต่าง
+                        ✕ Close
                       </button>
                     </div>
                   </div>
@@ -4488,7 +4907,7 @@ export default function App() {
                             onClick={item.onBuy}
                             className="w-full py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-bold text-xs uppercase tracking-wider cursor-pointer"
                           >
-                            [แลกเปลี่ยน · {item.cost} Shards]
+                            [Exchange · {item.cost} Shards]
                           </button>
                         </div>
                       );
@@ -5502,19 +5921,22 @@ export default function App() {
                       setBlessingChoices(null);
                       sfx.play('gacha');
                     }}
-                    className={`p-4 bg-slate-950 border rounded-xl flex flex-col justify-between cursor-pointer transition-colors space-y-4 ${
+                    className={`p-4 bg-slate-950 border rounded-xl flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-0.5 space-y-3 ${
                       idx === 0 ? 'border-amber-400/80 ring-1 ring-amber-400/30' : 'border-slate-800 hover:border-amber-400'
                     }`}
                   >
-                    <div className="space-y-1.5">
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-between text-xs font-mono">
                         <span className="text-amber-300">{card.id}</span>
                         <span className="text-slate-400">
                           {card.rarity} · Tier {nextTier}/3
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-white font-display">{card.name}</h3>
-                      <p className="text-xs text-slate-300 leading-relaxed">{card.desc}</p>
+                      <div className="flex justify-center py-1">
+                        <PixelTarotCardCanvas arcanaId={card.id} className="w-24 h-30" />
+                      </div>
+                      <h3 className="text-sm font-bold text-white font-display text-center">{card.name}</h3>
+                      <p className="text-xs text-slate-300 leading-relaxed text-center">{card.desc}</p>
                     </div>
                     <div className="py-1.5 text-center bg-amber-400/15 text-amber-300 text-xs font-semibold rounded">
                       {idx === 0 ? `Select Tarot (Auto in ${tarotAutoTimer.toFixed(0)}s)` : 'Select Tarot Blessing'}

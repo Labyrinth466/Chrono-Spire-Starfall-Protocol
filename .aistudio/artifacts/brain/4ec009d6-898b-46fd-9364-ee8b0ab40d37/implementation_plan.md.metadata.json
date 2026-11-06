@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to remove the duplicate 📊 CP Breakdown button (keeping only Inspect CP) and upgrade Chrono Rewind with full-wedge clickable SVG annular sectors for all 12 Zodiac constellations + Center Seasonal Constellation, each with its own dedicated 22-node zoomable star tree and aligned bottom reset($$$$G) button.",
-  "updatedAt": "2026-11-05T12:39:41.390187719Z",
+  "summary": "Implementation plan to restore the 2D Pixel Art (HD-2D Canvas) engine, eliminate monster HP/status overlap using a 3-layer DOM overlay stack (22x22px SVG status badges above head, 100% clean 2D pixel sprite in center, HP + 5-bar Stagger + WEAK badge below feet), and upgrade all 22 Major Arcana Tarot cards to animated 32x40 16-Bit Pixel Art Tarot Cards in both the Every-5-Floor modal and Wiki Arcana Compendium.",
+  "updatedAt": "2026-11-06T08:10:03.536751995Z",
   "requestFeedback": true,
   "userFacing": true
 }

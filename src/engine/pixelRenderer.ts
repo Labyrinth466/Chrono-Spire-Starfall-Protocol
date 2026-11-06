@@ -684,18 +684,14 @@ export function drawEldritchBossPart(
     ctx.stroke();
   }
 
-  // Manual Tap-to-Focus Reticle
+  // Manual Tap-to-Focus Reticle (subtle corner brackets, no text over sprite)
   if (isFocused) {
-    const pulse = 1 + Math.sin(time * 8) * 0.08;
+    const pulse = 1 + Math.sin(time * 8) * 0.05;
     ctx.scale(pulse, pulse);
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 2.5;
-    const r = 13 * p;
+    ctx.lineWidth = 2;
+    const r = 12 * p;
     ctx.strokeRect(-r, -r, r * 2, r * 2);
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 10px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('FOCUS TARGET', 0, -r - 6);
   }
 
   ctx.restore();
@@ -936,20 +932,8 @@ export function renderBattlefieldCanvas(
   });
 
   // ============================================================================
-  // 3. DRAW MULTI-PART OLD GOD BOSS & CONDITIONAL WORLD-SPACE BOSS HUD
+  // 3. DRAW MULTI-PART OLD GOD BOSS (100% CLEAN SPRITE LAYER — 3-LAYER HUD IS DOM OVERLAY)
   // ============================================================================
-  const BOSS_STATUS_BADGE_CFG: Record<string, { border: string; bg: string; maxDur: number }> = {
-    Burn: { border: '#f97316', bg: 'rgba(154, 52, 18, 0.92)', maxDur: 4.0 },
-    Freeze: { border: '#38bdf8', bg: 'rgba(12, 74, 110, 0.92)', maxDur: 2.0 },
-    Shock: { border: '#c084fc', bg: 'rgba(88, 28, 135, 0.92)', maxDur: 4.0 },
-    Bleed: { border: '#f43f5e', bg: 'rgba(136, 19, 55, 0.92)', maxDur: 4.0 },
-    'Luminous Mark': { border: '#fbbf24', bg: 'rgba(120, 53, 15, 0.92)', maxDur: 4.0 },
-    Corrosion: { border: '#a855f7', bg: 'rgba(59, 7, 100, 0.92)', maxDur: 4.0 },
-    Defenseless: { border: '#fb7185', bg: 'rgba(159, 18, 57, 0.92)', maxDur: 4.0 },
-    Slow: { border: '#34d399', bg: 'rgba(6, 78, 59, 0.92)', maxDur: 4.0 },
-    FREEZE_IMMUNE: { border: '#7dd3fc', bg: 'rgba(8, 47, 73, 0.95)', maxDur: 8.0 },
-  };
-
   const sortedBoss = bossParts.filter((b) => b.alive && b.hp > 0).sort((a, b) => a.y - b.y);
   sortedBoss.forEach((b) => {
     const isMainBoss = b.id === 'BOSS_MAIN';
@@ -965,264 +949,6 @@ export function renderBattlefieldCanvas(
       maxSegmentBp,
       staggerWarningTimer
     );
-
-    // Part HP bar directly above Boss segment
-    const bw = isMainBoss ? 116 : 82;
-    const bx = Math.round(b.x - bw / 2);
-    const by = Math.round(b.y - (isMainBoss ? 92 : 56));
-
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
-    ctx.fillRect(bx - 1, by - 1, bw + 2, 9);
-
-    const hpPct = Math.max(0, Math.min(1, b.hp / b.maxHp));
-    ctx.fillStyle = isStaggered && isMainBoss ? '#f59e0b' : '#e11d48';
-    ctx.fillRect(bx, by, Math.round(bw * hpPct), 7);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(b.name, b.x, by - 5);
-
-    // CONDITIONAL RENDER CHECK 1: Boss Skill Cast Bar + 5-Segment Stagger Gauge (ONLY when BOSS_MAIN is charging a skill)
-    const shouldRenderStaggerHud = isMainBoss && staggerWarningTimer > 0 && !isStaggered;
-    if (shouldRenderStaggerHud) {
-      const floatY = Math.sin(time * 2.8 + b.x * 0.04) * 6;
-      const recoilX = b.hitFlash > 0 ? 7 : 0;
-      const hudCenterX = Math.round(b.x + recoilX);
-      const hudBaseY = Math.round(b.y + floatY);
-      const totalW = 116;
-      const startX = Math.round(hudCenterX - totalW / 2);
-      const castY = Math.round(hudBaseY + 53);
-      const barY = castY + 9;
-      const castProgress = Math.max(0, Math.min(1, (4.0 - staggerWarningTimer) / 4.0));
-
-      ctx.save();
-      // 1. Boss Skill Cast Charge Bar (0% -> 100% over 4.0s)
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
-      ctx.fillRect(startX - 1, castY - 1, totalW + 2, 7);
-      ctx.fillStyle = Math.floor(time * 10) % 2 === 0 ? '#f43f5e' : '#e879f9';
-      ctx.fillRect(startX, castY, Math.round(totalW * castProgress), 5);
-
-      ctx.fillStyle = '#fda4af';
-      ctx.font = 'bold 8px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`CASTING ${staggerWarningTimer.toFixed(1)}s`, hudCenterX, castY - 2);
-
-      // 2. 5-Segment Stagger Break Gauge under Cast Bar
-      const segW = (totalW - 8) / 5;
-      for (let s = 0; s < 5; s++) {
-        const sx = startX + s * (segW + 2);
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
-        ctx.fillRect(sx - 1, barY - 1, segW + 2, 7);
-        let fillRatio = 0;
-        if (s < staggerSegments - 1) fillRatio = 1;
-        else if (s === staggerSegments - 1) fillRatio = Math.max(0, currentSegmentBp / Math.max(1, maxSegmentBp));
-        ctx.fillStyle = fillRatio > 0 ? '#fbbf24' : '#334155';
-        ctx.fillRect(sx, barY, Math.round(segW * fillRatio), 5);
-        if (fillRatio === 0) {
-          ctx.strokeStyle = '#f43f5e';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(sx + 3, barY);
-          ctx.lineTo(sx + segW - 3, barY + 5);
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-    }
-
-    // CONDITIONAL RENDER CHECK 2: 18x18px SVG Status Badge Group (Skip allocation & draw if no active debuffs/immunity)
-    const hasVisibleBadges =
-      (b.debuffs.length > 0 && b.debuffs.some((d) => d.remaining > 0)) || b.freezeResistTimer > 0;
-    if (hasVisibleBadges) {
-      const badgeMap = new Map<
-        string,
-        { type: string; remaining: number; maxDur: number; stacks: number; borderColor: string; bgColor: string }
-      >();
-      for (const d of b.debuffs) {
-        if (d.remaining <= 0) continue;
-        const meta = BOSS_STATUS_BADGE_CFG[d.type] || {
-          border: '#38bdf8',
-          bg: 'rgba(15, 23, 42, 0.92)',
-          maxDur: 4.0,
-        };
-        const prev = badgeMap.get(d.type);
-        if (prev) {
-          prev.stacks = Math.max(prev.stacks, d.stacks);
-          prev.remaining = Math.max(prev.remaining, d.remaining);
-        } else {
-          badgeMap.set(d.type, {
-            type: d.type,
-            remaining: d.remaining,
-            maxDur: meta.maxDur,
-            stacks: d.stacks,
-            borderColor: meta.border,
-            bgColor: meta.bg,
-          });
-        }
-      }
-
-      if (!badgeMap.has('Freeze') && b.freezeResistTimer > 0) {
-        const meta = BOSS_STATUS_BADGE_CFG.FREEZE_IMMUNE;
-        badgeMap.set('FREEZE_IMMUNE', {
-          type: 'FREEZE_IMMUNE',
-          remaining: b.freezeResistTimer,
-          maxDur: meta.maxDur,
-          stacks: 1,
-          borderColor: meta.border,
-          bgColor: meta.bg,
-        });
-      }
-
-      const badgeItems = Array.from(badgeMap.values());
-      if (badgeItems.length > 0) {
-        const iconSz = 18; // Strictly 18x18px per badge
-        const gap = 4;
-        const totalRowW = badgeItems.length * iconSz + (badgeItems.length - 1) * gap;
-        const startIconX = Math.round(b.x - totalRowW / 2);
-        const iconY = by - 36;
-        const animTick = Math.floor(time * 10);
-
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 8px "JetBrains Mono", monospace';
-
-        for (let idx = 0; idx < badgeItems.length; idx++) {
-          const item = badgeItems[idx];
-          const ix = startIconX + idx * (iconSz + gap);
-          const durRatio = Math.max(0, Math.min(1, item.remaining / item.maxDur));
-          const isExpiring = item.remaining <= 1.5;
-          const tickPulse = isExpiring && animTick % 2 === 0;
-
-          // 1. Exact 18x18px Badge Box + Radial Countdown Sweep
-          ctx.fillStyle = item.bgColor;
-          ctx.fillRect(ix, iconY, iconSz, iconSz);
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(ix, iconY, iconSz, iconSz);
-          ctx.clip();
-          if (durRatio < 1) {
-            ctx.fillStyle = 'rgba(2, 6, 23, 0.48)';
-            ctx.beginPath();
-            ctx.moveTo(ix + 9, iconY + 9);
-            ctx.arc(
-              ix + 9,
-              iconY + 9,
-              14,
-              -Math.PI / 2,
-              -Math.PI / 2 + (1 - durRatio) * Math.PI * 2,
-              false
-            );
-            ctx.closePath();
-            ctx.fill();
-          }
-          ctx.restore();
-
-          ctx.strokeStyle = tickPulse ? '#ffffff' : item.borderColor;
-          ctx.lineWidth = 1.4;
-          ctx.strokeRect(ix + 0.5, iconY + 0.5, iconSz - 1, iconSz - 1);
-
-          // Animated countdown tick bar along bottom edge of 18x18px box
-          ctx.fillStyle = tickPulse ? '#fde047' : item.borderColor;
-          ctx.fillRect(ix + 1, iconY + iconSz - 3, Math.round((iconSz - 2) * durRatio), 2);
-
-          // 2. Vector Status Glyph centered inside 18x18px box
-          const cx = ix + 9;
-          const cy = iconY + 8;
-          ctx.strokeStyle = '#ffffff';
-          ctx.fillStyle = tickPulse ? '#ffffff' : item.borderColor;
-          ctx.lineWidth = 1.4;
-          ctx.beginPath();
-
-          if (item.type === 'Burn') {
-            ctx.moveTo(cx, cy - 5);
-            ctx.quadraticCurveTo(cx + 5, cy, cx + 2, cy + 5);
-            ctx.quadraticCurveTo(cx, cy + 3, cx - 2, cy + 5);
-            ctx.quadraticCurveTo(cx - 5, cy, cx, cy - 5);
-            ctx.fill();
-          } else if (item.type === 'Freeze') {
-            ctx.moveTo(cx - 4, cy);
-            ctx.lineTo(cx + 4, cy);
-            ctx.moveTo(cx, cy - 4);
-            ctx.lineTo(cx, cy + 4);
-            ctx.moveTo(cx - 3, cy - 3);
-            ctx.lineTo(cx + 3, cy + 3);
-            ctx.moveTo(cx + 3, cy - 3);
-            ctx.lineTo(cx - 3, cy + 3);
-            ctx.stroke();
-          } else if (item.type === 'FREEZE_IMMUNE') {
-            ctx.moveTo(cx, cy - 5);
-            ctx.lineTo(cx + 4.5, cy - 3);
-            ctx.lineTo(cx + 3.5, cy + 2.5);
-            ctx.lineTo(cx, cy + 5);
-            ctx.lineTo(cx - 3.5, cy + 2.5);
-            ctx.lineTo(cx - 4.5, cy - 3);
-            ctx.closePath();
-            ctx.stroke();
-          } else if (item.type === 'Shock') {
-            ctx.moveTo(cx + 1, cy - 5);
-            ctx.lineTo(cx - 3, cy);
-            ctx.lineTo(cx, cy);
-            ctx.lineTo(cx - 1, cy + 5);
-            ctx.lineTo(cx + 3, cy - 1);
-            ctx.lineTo(cx, cy - 1);
-            ctx.closePath();
-            ctx.fill();
-          } else if (item.type === 'Bleed') {
-            ctx.moveTo(cx, cy - 5);
-            ctx.quadraticCurveTo(cx + 4.5, cy + 1, cx, cy + 5);
-            ctx.quadraticCurveTo(cx - 4.5, cy + 1, cx, cy - 5);
-            ctx.fill();
-          } else if (item.type === 'Luminous Mark') {
-            ctx.moveTo(cx, cy - 5);
-            ctx.lineTo(cx + 1.5, cy - 1.5);
-            ctx.lineTo(cx + 5, cy);
-            ctx.lineTo(cx + 1.5, cy + 1.5);
-            ctx.lineTo(cx, cy + 5);
-            ctx.lineTo(cx - 1.5, cy + 1.5);
-            ctx.lineTo(cx - 5, cy);
-            ctx.lineTo(cx - 1.5, cy - 1.5);
-            ctx.closePath();
-            ctx.fill();
-          } else if (item.type === 'Defenseless') {
-            ctx.moveTo(cx - 4, cy - 4);
-            ctx.lineTo(cx + 4, cy - 4);
-            ctx.lineTo(cx + 3, cy + 3);
-            ctx.lineTo(cx, cy + 5);
-            ctx.lineTo(cx - 3, cy + 3);
-            ctx.closePath();
-            ctx.moveTo(cx - 2, cy - 4);
-            ctx.lineTo(cx + 2, cy + 4);
-            ctx.stroke();
-          } else {
-            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // 3. Stack count inside top-right corner of the 18x18px badge
-          if (item.stacks > 1) {
-            ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
-            ctx.fillRect(ix + iconSz - 8, iconY + 1, 7, 7);
-            ctx.fillStyle = '#fde047';
-            ctx.fillText(`${item.stacks}`, ix + iconSz - 4.5, iconY + 7);
-          }
-
-          // 4. Countdown timer label synced with animation tick above the 18x18px badge
-          ctx.fillStyle = tickPulse ? '#fde047' : item.type === 'FREEZE_IMMUNE' ? '#bae6fd' : '#f8fafc';
-          ctx.fillText(`${item.remaining.toFixed(1)}s`, ix + 9, iconY - 2);
-        }
-
-        ctx.restore();
-      }
-    }
-
-    // CONDITIONAL RENDER CHECK 3: Taunt Indicator (Only when tauntTimer > 0)
-    if (b.tauntTimer > 0) {
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText(`TAUNT ${b.tauntTimer.toFixed(1)}s`, b.x, by + 17);
-    }
   });
 
   // ============================================================================
@@ -1296,3 +1022,337 @@ export function renderBattlefieldCanvas(
 
   ctx.restore();
 }
+
+/**
+ * 16-BIT PIXEL ART TAROT CARD RENDERER (32x40 Grid, image-rendering: pixelated)
+ * Renders all 22 Major Arcana cards (0. The Fool -> XXI. The World) with a pixel gold frame,
+ * animated twinkling stars, and distinct 16-bit pixel art iconography per card.
+ */
+interface TarotPalette {
+  bgTop: string;
+  bgBot: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+}
+
+const TAROT_PALETTES: Record<string, TarotPalette> = {
+  ARCANA_00: { bgTop: '#0c1938', bgBot: '#1e3a8a', primary: '#38bdf8', secondary: '#fde047', accent: '#f8fafc' }, // 0. The Fool
+  ARCANA_01: { bgTop: '#2e1065', bgBot: '#4c1d95', primary: '#c084fc', secondary: '#fbbf24', accent: '#f43f5e' }, // I. The Magician
+  ARCANA_02: { bgTop: '#082f49', bgBot: '#0f172a', primary: '#7dd3fc', secondary: '#e0f2fe', accent: '#c084fc' }, // II. The High Priestess
+  ARCANA_03: { bgTop: '#064e3b', bgBot: '#022c22', primary: '#34d399', secondary: '#fde047', accent: '#f472b6' }, // III. The Empress
+  ARCANA_04: { bgTop: '#450a0a', bgBot: '#1f0909', primary: '#ef4444', secondary: '#fbbf24', accent: '#fdba74' }, // IV. The Emperor
+  ARCANA_05: { bgTop: '#422006', bgBot: '#1c1917', primary: '#fbbf24', secondary: '#fef08a', accent: '#38bdf8' }, // V. The Hierophant
+  ARCANA_06: { bgTop: '#500724', bgBot: '#1e1b4b', primary: '#f472b6', secondary: '#fde047', accent: '#38bdf8' }, // VI. The Lovers
+  ARCANA_07: { bgTop: '#0f172a', bgBot: '#1e293b', primary: '#38bdf8', secondary: '#fbbf24', accent: '#f8fafc' }, // VII. The Chariot
+  ARCANA_08: { bgTop: '#431407', bgBot: '#1c1917', primary: '#fb923c', secondary: '#fde047', accent: '#ef4444' }, // VIII. Strength
+  ARCANA_09: { bgTop: '#090d16', bgBot: '#1e1b4b', primary: '#fef08a', secondary: '#94a3b8', accent: '#38bdf8' }, // IX. The Hermit
+  ARCANA_10: { bgTop: '#3b0764', bgBot: '#0f172a', primary: '#fbbf24', secondary: '#c084fc', accent: '#38bdf8' }, // X. Wheel of Fortune
+  ARCANA_11: { bgTop: '#172554', bgBot: '#090d16', primary: '#fde047', secondary: '#e2e8f0', accent: '#f43f5e' }, // XI. Justice
+  ARCANA_12: { bgTop: '#164e63', bgBot: '#0f172a', primary: '#22d3ee', secondary: '#fde047', accent: '#a855f7' }, // XII. The Hanged Man
+  ARCANA_13: { bgTop: '#090d16', bgBot: '#18181b', primary: '#e2e8f0', secondary: '#a855f7', accent: '#f43f5e' }, // XIII. Death
+  ARCANA_14: { bgTop: '#1e1b4b', bgBot: '#064e3b', primary: '#38bdf8', secondary: '#f97316', accent: '#fde047' }, // XIV. Temperance
+  ARCANA_15: { bgTop: '#310b2b', bgBot: '#090d16', primary: '#f43f5e', secondary: '#a855f7', accent: '#fbbf24' }, // XV. The Devil
+  ARCANA_16: { bgTop: '#3f0d12', bgBot: '#090d16', primary: '#fb923c', secondary: '#fde047', accent: '#94a3b8' }, // XVI. The Tower
+  ARCANA_17: { bgTop: '#082f49', bgBot: '#020617', primary: '#fde047', secondary: '#38bdf8', accent: '#f8fafc' }, // XVII. The Star
+  ARCANA_18: { bgTop: '#1e1b4b', bgBot: '#020617', primary: '#bae6fd', secondary: '#818cf8', accent: '#fde047' }, // XVIII. The Moon
+  ARCANA_19: { bgTop: '#7c2d12', bgBot: '#451a03', primary: '#fde047', secondary: '#fb923c', accent: '#fef9c3' }, // XIX. The Sun
+  ARCANA_20: { bgTop: '#311042', bgBot: '#0f172a', primary: '#fbbf24', secondary: '#f43f5e', accent: '#f8fafc' }, // XX. Judgement
+  ARCANA_21: { bgTop: '#064e3b', bgBot: '#1e1b4b', primary: '#34d399', secondary: '#fde047', accent: '#c084fc' }, // XXI. The World
+};
+
+export function drawPixelTarotCard(
+  canvas: HTMLCanvasElement,
+  arcanaId: string,
+  tick: number = 0
+): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const W = 32;
+  const H = 40;
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, W, H);
+
+  const pal = TAROT_PALETTES[arcanaId] || TAROT_PALETTES.ARCANA_00;
+  const numIdx = Math.max(0, Math.min(21, parseInt(arcanaId.replace('ARCANA_', ''), 10) || 0));
+  const pulse = Math.floor(tick * 3) % 2 === 0;
+
+  const px = (x: number, y: number, w: number, h: number, color: string) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  };
+
+  // 1. Background Bands (16-Bit Dithered Sky)
+  px(2, 2, 28, 18, pal.bgTop);
+  px(2, 20, 28, 18, pal.bgBot);
+  for (let dx = 3; dx < 29; dx += 2) {
+    px(dx, 19 + (dx % 2), 1, 1, pal.bgBot);
+    px(dx, 20 - (dx % 2), 1, 1, pal.bgTop);
+  }
+
+  // 2. Ornate 16-Bit Gold Pixel Frame & Corner Gems
+  px(0, 0, 32, 1, '#ca8a04');
+  px(0, 39, 32, 1, '#ca8a04');
+  px(0, 0, 1, 40, '#ca8a04');
+  px(31, 0, 1, 40, '#ca8a04');
+
+  px(1, 1, 30, 1, '#fbbf24');
+  px(1, 38, 30, 1, '#fbbf24');
+  px(1, 1, 1, 38, '#fbbf24');
+  px(30, 1, 1, 38, '#fbbf24');
+
+  // Corner studs
+  const cornerCol = pulse ? '#fef08a' : '#f59e0b';
+  px(2, 2, 2, 2, cornerCol);
+  px(28, 2, 2, 2, cornerCol);
+  px(2, 36, 2, 2, cornerCol);
+  px(28, 36, 2, 2, cornerCol);
+
+  // Top Roman Header Plate & Bottom Altar Plate
+  px(6, 2, 20, 4, '#090d16');
+  px(6, 5, 20, 1, '#fbbf24');
+  // Pixel pips indicating Arcana Number
+  const pipCount = (numIdx % 5) + 1;
+  for (let i = 0; i < pipCount; i++) {
+    px(16 - pipCount + i * 2, 3, 1, 1, '#fde047');
+  }
+
+  // 3. Twinkling Celestial Star Pixels
+  const starCoords: [number, number][] = [
+    [5, 8],
+    [26, 9],
+    [6, 28],
+    [25, 27],
+    [15, 7],
+  ];
+  starCoords.forEach(([sx, sy], idx) => {
+    const twinkle = (Math.floor(tick * 4) + idx + numIdx) % 3 === 0;
+    px(sx, sy, 1, 1, twinkle ? '#ffffff' : pal.secondary);
+    if (twinkle) {
+      px(sx - 1, sy, 1, 1, pal.primary);
+      px(sx + 1, sy, 1, 1, pal.primary);
+    }
+  });
+
+  // 4. Unique 16-Bit Emblem per Major Arcana (0..21)
+  const bob = Math.floor(tick * 2.5) % 2;
+  switch (numIdx) {
+    case 0: {
+      // 0. The Fool: Cliff edge, wanderer with bindle & white star dog
+      px(3, 28, 12, 9, '#334155');
+      px(5, 27, 10, 2, '#64748b');
+      px(11, 18 + bob, 4, 5, pal.primary);
+      px(12, 15 + bob, 3, 3, '#fde68a');
+      px(8, 14 + bob, 9, 1, pal.secondary);
+      px(7, 13 + bob, 2, 2, pal.accent);
+      px(22, 10 - bob, 4, 4, '#fde047');
+      break;
+    }
+    case 1: {
+      // I. The Magician: Lemniscate infinity halo, raised wand & altar tools
+      px(12, 9, 3, 2, '#fde047');
+      px(17, 9, 3, 2, '#fde047');
+      px(15, 10, 2, 1, '#ffffff');
+      px(13, 13 + bob, 6, 4, '#fde68a');
+      px(11, 17 + bob, 10, 10, pal.primary);
+      px(22, 11 + bob, 2, 9, '#fef08a');
+      px(6, 30, 20, 3, '#fbbf24');
+      break;
+    }
+    case 2: {
+      // II. The High Priestess: Twin pillars B & J + Lunar Crescent Crown
+      px(5, 10, 4, 24, '#475569');
+      px(23, 10, 4, 24, '#e2e8f0');
+      px(11, 12 + bob, 10, 3, pal.secondary);
+      px(12, 16 + bob, 8, 14, pal.primary);
+      px(13, 23 + bob, 6, 4, '#fde047');
+      break;
+    }
+    case 3: {
+      // III. The Empress: 12-star emerald crown, golden scepter & nature field
+      px(4, 29, 24, 7, '#059669');
+      px(11, 11 + bob, 10, 3, '#fde047');
+      px(13, 14 + bob, 6, 5, '#fde68a');
+      px(10, 19 + bob, 12, 11, pal.accent);
+      px(23, 14 + bob, 2, 12, '#fde047');
+      break;
+    }
+    case 4: {
+      // IV. The Emperor: Stone Ram Throne, Ruby Armor & Ankh Orb
+      px(7, 12, 18, 22, '#334155');
+      px(11, 11 + bob, 10, 3, '#fbbf24');
+      px(10, 17 + bob, 12, 13, pal.primary);
+      px(6, 18, 3, 3, '#fde047');
+      px(23, 18, 3, 3, '#fde047');
+      break;
+    }
+    case 5: {
+      // V. The Hierophant: Papal Triple Crown & Crossed Astral Keys
+      px(12, 9 + bob, 8, 5, '#fbbf24');
+      px(14, 7 + bob, 4, 2, '#fef08a');
+      px(11, 16 + bob, 10, 12, pal.primary);
+      px(9, 29, 6, 4, '#cbd5e1');
+      px(17, 29, 6, 4, '#fde047');
+      break;
+    }
+    case 6: {
+      // VI. The Lovers: Radiant Solar Winged Heart & Twin Chalice Flames
+      px(10, 13 + bob, 5, 5, pal.primary);
+      px(17, 13 + bob, 5, 5, pal.primary);
+      px(9, 15 + bob, 14, 5, pal.primary);
+      px(11, 20 + bob, 10, 4, pal.primary);
+      px(13, 24 + bob, 6, 3, pal.primary);
+      px(15, 27 + bob, 2, 2, pal.secondary);
+      px(14, 9, 4, 3, '#fde047');
+      break;
+    }
+    case 7: {
+      // VII. The Chariot: Winged War Chariot & Twin Sphinxes
+      px(8, 16 + bob, 16, 11, '#334155');
+      px(10, 14 + bob, 12, 3, '#fbbf24');
+      px(13, 10 + bob, 6, 5, pal.primary);
+      px(6, 23, 2, 7, '#fde047');
+      px(24, 23, 2, 7, '#fde047');
+      px(9, 29, 5, 5, '#e2e8f0');
+      px(18, 29, 5, 5, '#1e293b');
+      break;
+    }
+    case 8: {
+      // VIII. Strength: Golden Lion Mane & Infinity Crown
+      px(12, 9, 8, 2, '#fde047');
+      px(9, 13 + bob, 14, 14, '#d97706');
+      px(11, 15 + bob, 10, 10, '#fbbf24');
+      px(12, 17 + bob, 2, 2, '#090d16');
+      px(18, 17 + bob, 2, 2, '#090d16');
+      px(14, 21 + bob, 4, 3, '#ef4444');
+      break;
+    }
+    case 9: {
+      // IX. The Hermit: Hooded Sage & Glowing 6-Ray Star Lantern
+      px(10, 12 + bob, 9, 19, '#475569');
+      px(12, 14 + bob, 4, 4, '#0f172a');
+      px(21, 16 - bob, 5, 7, '#fbbf24');
+      px(22, 17 - bob, 3, 5, pulse ? '#ffffff' : '#fef08a');
+      px(7, 13, 2, 20, '#a16207');
+      break;
+    }
+    case 10: {
+      // X. Wheel of Fortune: 8-Spoke Cosmic Destiny Wheel
+      px(9, 13, 14, 14, '#ca8a04');
+      px(11, 15, 10, 10, '#1e1b4b');
+      px(15, 11, 2, 18, '#fde047');
+      px(7, 19, 18, 2, '#fde047');
+      px(14, 18, 4, 4, pal.accent);
+      break;
+    }
+    case 11: {
+      // XI. Justice: Upright Silver Sword & Twin Golden Scales
+      px(15, 8, 2, 22, '#e2e8f0');
+      px(11, 14, 10, 2, '#fbbf24');
+      px(6, 16 + bob, 5, 2, '#fde047');
+      px(21, 16 - bob, 5, 2, '#fde047');
+      px(5, 21 + bob, 7, 3, '#fbbf24');
+      px(20, 21 - bob, 7, 3, '#fbbf24');
+      break;
+    }
+    case 12: {
+      // XII. The Hanged Man: T-Cross Timber & Radiant Inverted Nimbus Halo
+      px(6, 9, 20, 3, '#78350f');
+      px(15, 12, 2, 6, '#fbbf24');
+      px(12, 18, 8, 9, pal.primary);
+      px(11, 26 + bob, 10, 6, '#fde047');
+      px(13, 27 + bob, 6, 4, '#fef08a');
+      break;
+    }
+    case 13: {
+      // XIII. Death: Pale Skull & Curved Astral Reaper Scythe
+      px(8, 10, 16, 3, '#cbd5e1');
+      px(21, 12, 4, 6, '#e2e8f0');
+      px(9, 10, 2, 23, '#78350f');
+      px(13, 15 + bob, 8, 8, '#f8fafc');
+      px(14, 17 + bob, 2, 2, '#f43f5e');
+      px(18, 17 + bob, 2, 2, '#f43f5e');
+      px(15, 23 + bob, 4, 3, '#cbd5e1');
+      break;
+    }
+    case 14: {
+      // XIV. Temperance: Twin Gold Chalices & Flowing Rainbow Alchemy Stream
+      px(6, 11 + bob, 6, 6, '#fbbf24');
+      px(20, 25 - bob, 6, 6, '#fbbf24');
+      for (let s = 0; s < 8; s++) {
+        px(11 + s, 15 + s, 2, 2, (s + Math.floor(tick * 6)) % 2 === 0 ? '#38bdf8' : '#f97316');
+      }
+      break;
+    }
+    case 15: {
+      // XV. The Devil: Abyssal Crimson Horns & Inverted Pentagram Torch
+      px(6, 10 + bob, 5, 7, '#f43f5e');
+      px(21, 10 + bob, 5, 7, '#f43f5e');
+      px(11, 14 + bob, 10, 12, '#881337');
+      px(12, 17 + bob, 3, 2, '#fde047');
+      px(17, 17 + bob, 3, 2, '#fde047');
+      px(14, 27, 4, 6, '#fb923c');
+      break;
+    }
+    case 16: {
+      // XVI. The Tower: Crumbling Obsidian Spire Struck by Golden Lightning
+      px(11, 14, 10, 21, '#334155');
+      px(10, 11 + bob, 12, 3, '#fbbf24');
+      px(22, 8, 3, 4, '#fde047');
+      px(19, 12, 4, 3, '#fde047');
+      px(15, 15, 5, 3, '#fb923c');
+      px(8, 20, 4, 4, '#ef4444');
+      break;
+    }
+    case 17: {
+      // XVII. The Star: Giant 8-Pointed Polaris Star & 7 Minor Stars
+      px(15, 9, 2, 16, '#fde047');
+      px(8, 16, 16, 2, '#fde047');
+      px(12, 13, 8, 8, '#fef08a');
+      px(14, 15, 4, 4, '#ffffff');
+      px(6, 29, 20, 5, '#0284c7');
+      break;
+    }
+    case 18: {
+      // XVIII. The Moon: Twin Watchtowers & Glowing Crescent Eclipse
+      px(5, 20, 5, 15, '#334155');
+      px(22, 20, 5, 15, '#334155');
+      px(11, 9 + bob, 10, 10, '#fde047');
+      px(14, 11 + bob, 7, 6, pal.bgTop);
+      px(11, 29, 10, 5, '#38bdf8');
+      break;
+    }
+    case 19: {
+      // XIX. The Sun: Blazing Golden Solar Disk & Crimson Sunbeams
+      px(10, 12, 12, 12, '#fbbf24');
+      px(12, 14, 8, 8, '#fef08a');
+      px(15, 7 - bob, 2, 4, '#fb923c');
+      px(15, 25 + bob, 2, 4, '#fb923c');
+      px(5 - bob, 17, 4, 2, '#fb923c');
+      px(23 + bob, 17, 4, 2, '#fb923c');
+      break;
+    }
+    case 20: {
+      // XX. Judgement: Archangel Golden Trumpet & Rising Souls
+      px(10, 9 + bob, 12, 5, '#f8fafc');
+      px(14, 14 + bob, 4, 8, '#fbbf24');
+      px(12, 22 + bob, 8, 3, '#fde047');
+      px(7, 29, 5, 6, '#38bdf8');
+      px(14, 28, 4, 7, '#c084fc');
+      px(20, 29, 5, 6, '#38bdf8');
+      break;
+    }
+    default: {
+      // XXI. The World: Emerald Cosmic Laurel Wreath & Astral Core
+      px(8, 10, 16, 20, '#10b981');
+      px(11, 13, 10, 14, pal.bgTop);
+      px(14, 16 + bob, 4, 8, '#fde047');
+      px(13, 18 + bob, 6, 4, '#c084fc');
+      px(13, 9, 6, 2, '#f43f5e');
+      px(13, 29, 6, 2, '#f43f5e');
+      break;
+    }
+  }
+}
+

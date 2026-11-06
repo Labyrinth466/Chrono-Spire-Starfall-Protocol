@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ELEMENT_META, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
 import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment.ts';
-import { drawPixelHeroSprite } from '../engine/pixelRenderer.ts';
+import { drawPixelHeroSprite, drawPixelTarotCard } from '../engine/pixelRenderer.ts';
 
 export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: string }> = ({ hero, className = '' }) => {
   const elMeta = ELEMENT_META[hero.element];
@@ -164,6 +164,38 @@ export const PixelPreviewCanvas: React.FC<{ hero: ResonatorData; compact?: boole
   );
 };
 
+export const PixelTarotCardCanvas: React.FC<{
+  arcanaId: string;
+  className?: string;
+}> = ({ arcanaId, className = 'w-16 h-20' }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let animId = 0;
+    const start = performance.now();
+    const render = (now: number) => {
+      const tick = (now - start) / 1000;
+      const canvas = canvasRef.current;
+      if (canvas) {
+        drawPixelTarotCard(canvas, arcanaId, tick);
+      }
+      animId = requestAnimationFrame(render);
+    };
+    animId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(animId);
+  }, [arcanaId]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={32}
+      height={40}
+      style={{ imageRendering: 'pixelated' }}
+      className={`select-none shrink-0 rounded-sm shadow-md ${className}`}
+    />
+  );
+};
+
 export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4">
@@ -291,9 +323,9 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
             <div>
               <h3 className="text-sm font-semibold text-amber-300 mb-3">
-                04. 8 Canonical Equipment Sets & 12 Tarot Blessings
+                04. 8 Canonical Equipment Sets &amp; 22 Major Arcana 16-Bit Pixel Tarot Cards
               </h3>
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {EQUIPMENT_SETS.map((s) => (
                   <div key={s.id} className="p-2.5 bg-slate-950/60 border border-slate-800 rounded">
                     <div className="font-semibold text-slate-100">
@@ -305,11 +337,20 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   </div>
                 ))}
                 {BLESSING_CARDS.map((b) => (
-                  <div key={b.id} className="p-2.5 bg-slate-950/40 border border-slate-800/70 rounded">
-                    <div className="font-semibold text-amber-200">
-                      {b.id} · {b.name} <span className="text-slate-400 font-normal">· {b.rarity}</span>
+                  <div
+                    key={b.id}
+                    className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center gap-3"
+                  >
+                    <PixelTarotCardCanvas arcanaId={b.id} className="w-12 h-15" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-amber-200">
+                        {b.number}. {b.name}{' '}
+                        <span className="text-slate-400 font-normal">
+                          · {b.id} · {b.rarity}
+                        </span>
+                      </div>
+                      <div className="text-slate-400">{b.desc}</div>
                     </div>
-                    <div className="text-slate-400">{b.desc}</div>
                   </div>
                 ))}
               </div>

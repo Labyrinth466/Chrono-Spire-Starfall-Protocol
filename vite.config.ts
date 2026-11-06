@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: '/Chrono-Spire-Starfall-Protocol/', // 👈 เพิ่มบรรทัดนี้เพื่อให้ทำงานบน GitHub Pages ได้ถูกต้อง
+    base: process.env.GITHUB_ACTIONS === 'true' ? '/Chrono-Spire-Starfall-Protocol/' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

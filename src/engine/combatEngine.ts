@@ -40,10 +40,31 @@ import {
   TOTAL_CHRONO_STARS,
 } from '../data/constellations';
 
-// --- PROCEDURAL WEB AUDIO SYNTH ---
+// --- PROCEDURAL WEB AUDIO SYNTH + LYRIA 3 AI BGM ENGINE ---
+export type BgmThemeMode = 'CORRIDOR' | 'BOSS';
+export type BgmEngineStatus = 'SYNTH_FALLBACK' | 'LYRIA_LOADING' | 'LYRIA_ACTIVE';
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   public muted: boolean = false;
+  public bgmTheme: BgmThemeMode = 'CORRIDOR';
+  public bgmStatus: BgmEngineStatus = 'SYNTH_FALLBACK';
+  public lastBgmError: string | null = null;
+
+  private synthIntervalId: number | null = null;
+  private synthStep: number = 0;
+  private lyriaAudioMap: Partial<Record<BgmThemeMode, HTMLAudioElement>> = {};
+  private lyriaFetching: Partial<Record<BgmThemeMode, boolean>> = {};
+  private statusListeners: Set<() => void> = new Set();
+
+  private notify(): void {
+    this.statusListeners.forEach((cb) => cb());
+  }
+
+  public subscribe(cb: () => void): () => void {
+    this.statusListeners.add(cb);
+    return () => this.statusListeners.delete(cb);
+  }
 
   private init(): void {
     if (!this.ctx && typeof window !== 'undefined') {
@@ -54,6 +75,144 @@ class SoundEngine {
     }
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
+    }
+  }
+
+  public setMuted(nextMuted: boolean): void {
+    this.muted = nextMuted;
+    Object.values(this.lyriaAudioMap).forEach((aud) => {
+      if (aud) aud.muted = nextMuted;
+    });
+    if (nextMuted) {
+      this.stopProceduralBgm();
+    } else {
+      this.syncActiveBgmPlayback();
+    }
+    this.notify();
+  }
+
+  public setBgmTheme(theme: BgmThemeMode): void {
+    if (this.bgmTheme === theme && (this.synthIntervalId !== null || this.bgmStatus === 'LYRIA_ACTIVE')) {
+      return;
+    }
+    this.bgmTheme = theme;
+    this.syncActiveBgmPlayback();
+    this.notify();
+  }
+
+  private stopProceduralBgm(): void {
+    if (this.synthIntervalId !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.synthIntervalId);
+      this.synthIntervalId = null;
+    }
+  }
+
+  private startProceduralBgm(): void {
+    if (this.muted || typeof window === 'undefined') return;
+    if (this.synthIntervalId !== null) return;
+
+    const corridorNotes = [220.0, 261.63, 329.63, 392.0, 329.63, 293.66, 246.94, 196.0];
+    const bossNotes = [146.83, 155.56, 196.0, 220.0, 233.08, 220.0, 174.61, 164.81];
+
+    this.synthIntervalId = window.setInterval(() => {
+      if (this.muted || this.bgmStatus === 'LYRIA_ACTIVE') return;
+      try {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const isBoss = this.bgmTheme === 'BOSS';
+        const seq = isBoss ? bossNotes : corridorNotes;
+        const freq = seq[this.synthStep % seq.length];
+        this.synthStep += 1;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = isBoss ? 'sawtooth' : 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(isBoss ? 0.025 : 0.02, now);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + (isBoss ? 0.24 : 0.36));
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + (isBoss ? 0.25 : 0.38));
+      } catch {
+        // Ignore audio context autoplay restriction until first user interaction
+      }
+    }, 280);
+  }
+
+  private syncActiveBgmPlayback(): void {
+    if (this.muted) {
+      this.stopProceduralBgm();
+      Object.values(this.lyriaAudioMap).forEach((a) => a?.pause());
+      return;
+    }
+
+    const otherTheme: BgmThemeMode = this.bgmTheme === 'BOSS' ? 'CORRIDOR' : 'BOSS';
+    this.lyriaAudioMap[otherTheme]?.pause();
+
+    const activeLyria = this.lyriaAudioMap[this.bgmTheme];
+    if (activeLyria) {
+      this.stopProceduralBgm();
+      this.bgmStatus = 'LYRIA_ACTIVE';
+      activeLyria.muted = this.muted;
+      activeLyria.play().catch(() => {
+        this.bgmStatus = 'SYNTH_FALLBACK';
+        this.startProceduralBgm();
+      });
+    } else {
+      this.bgmStatus = this.lyriaFetching[this.bgmTheme] ? 'LYRIA_LOADING' : 'SYNTH_FALLBACK';
+      this.startProceduralBgm();
+    }
+  }
+
+  public async generateLyriaBgm(theme: BgmThemeMode = this.bgmTheme): Promise<boolean> {
+    if (this.lyriaAudioMap[theme]) {
+      this.setBgmTheme(theme);
+      return true;
+    }
+    if (this.lyriaFetching[theme]) return false;
+
+    this.lyriaFetching[theme] = true;
+    this.lastBgmError = null;
+    if (this.bgmTheme === theme) {
+      this.bgmStatus = 'LYRIA_LOADING';
+    }
+    // Keep Web Audio synth fallback playing non-blocking while Lyria 3 generates
+    this.startProceduralBgm();
+    this.notify();
+
+    try {
+      const resp = await fetch('/api/bgm/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackType: theme }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data?.ok || !data?.audioDataUrl) {
+        this.lastBgmError = data?.error || 'Lyria 3 unavailable; Web Audio synth fallback active.';
+        this.lyriaFetching[theme] = false;
+        this.bgmStatus = 'SYNTH_FALLBACK';
+        this.notify();
+        return false;
+      }
+
+      const audio = new Audio(data.audioDataUrl);
+      audio.loop = true;
+      audio.volume = 0.38;
+      audio.muted = this.muted;
+      this.lyriaAudioMap[theme] = audio;
+      this.lyriaFetching[theme] = false;
+      this.syncActiveBgmPlayback();
+      this.notify();
+      return true;
+    } catch (err: unknown) {
+      this.lastBgmError =
+        err instanceof Error ? err.message : 'Lyria 3 request failed; Web Audio synth fallback active.';
+      this.lyriaFetching[theme] = false;
+      this.bgmStatus = 'SYNTH_FALLBACK';
+      this.notify();
+      return false;
     }
   }
 
@@ -73,6 +232,9 @@ class SoundEngine {
     if (this.muted) return;
     try {
       this.init();
+      if (this.synthIntervalId === null && this.bgmStatus !== 'LYRIA_ACTIVE') {
+        this.startProceduralBgm();
+      }
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
@@ -154,6 +316,82 @@ class SoundEngine {
 }
 
 export const sfx = new SoundEngine();
+
+// --- ELEMENTAL ADVANTAGE / COUNTER SYSTEM (v2.2) ---
+// Primary 4-Element Cycle: Fire > Wind > Electro > Cryo > Fire
+// Astral Dual Counter: Light <-> Dark (mutual advantage, never resist)
+export interface ElementalCounterResult {
+  state: 'ADVANTAGE' | 'DISADVANTAGE' | 'NEUTRAL';
+  dmgMult: number;
+  bpMult: number;
+  bonusCritRate: number;
+  tag?: 'WEAK!' | 'RESIST';
+}
+
+const PRIMARY_ADVANTAGE_MAP: Partial<Record<ElementType, ElementType>> = {
+  Fire: 'Wind',
+  Wind: 'Electro',
+  Electro: 'Cryo',
+  Cryo: 'Fire',
+};
+
+export function getRecommendedCounterElement(enemyElement: ElementType): ElementType {
+  if (enemyElement === 'Wind') return 'Fire';
+  if (enemyElement === 'Electro') return 'Wind';
+  if (enemyElement === 'Cryo') return 'Electro';
+  if (enemyElement === 'Fire') return 'Cryo';
+  if (enemyElement === 'Light') return 'Dark';
+  return 'Light';
+}
+
+export function getRecommendedFloorCP(floor: number): number {
+  return Math.round(8500 * Math.pow(1.075, Math.max(0, floor - 1)));
+}
+
+export function evaluateElementalCounter(
+  attackerElement: ElementType,
+  defenderElement: ElementType
+): ElementalCounterResult {
+  if (
+    (attackerElement === 'Light' && defenderElement === 'Dark') ||
+    (attackerElement === 'Dark' && defenderElement === 'Light')
+  ) {
+    return {
+      state: 'ADVANTAGE',
+      dmgMult: 1.3,
+      bpMult: 1.25,
+      bonusCritRate: 15,
+      tag: 'WEAK!',
+    };
+  }
+
+  if (PRIMARY_ADVANTAGE_MAP[attackerElement] === defenderElement) {
+    return {
+      state: 'ADVANTAGE',
+      dmgMult: 1.3,
+      bpMult: 1.25,
+      bonusCritRate: 15,
+      tag: 'WEAK!',
+    };
+  }
+
+  if (PRIMARY_ADVANTAGE_MAP[defenderElement] === attackerElement) {
+    return {
+      state: 'DISADVANTAGE',
+      dmgMult: 0.8,
+      bpMult: 0.85,
+      bonusCritRate: 0,
+      tag: 'RESIST',
+    };
+  }
+
+  return {
+    state: 'NEUTRAL',
+    dmgMult: 1.0,
+    bpMult: 1.0,
+    bonusCritRate: 0,
+  };
+}
 
 // --- COMPLETE 9-REACTION ELEMENTAL MATRIX (MODULE 4) ---
 export interface ElementalReactionMatrixItem {
@@ -826,6 +1064,7 @@ export interface BossPartUnit {
   id: BossPartId;
   name: string;
   roleLabel: string;
+  element: ElementType;
   rivalHeroId?: string;
   hp: number;
   maxHp: number;
@@ -905,9 +1144,20 @@ export function getFloorSegmentBp(floor: number, isBerserk: boolean): number {
   return isBerserk ? Math.round(base * 1.5) : base;
 }
 
+const FLOOR_ELEMENT_CYCLE: ElementType[] = ['Fire', 'Cryo', 'Wind', 'Electro', 'Dark', 'Light'];
+
+export function getFloorPrimaryElement(targetFloor: number, domainId?: string): ElementType {
+  if (domainId === 'GOLD_VAULT') return 'Light';
+  if (domainId === 'DOMAIN_I') return 'Fire';
+  if (domainId === 'DOMAIN_II') return 'Cryo';
+  if (domainId === 'DOMAIN_III') return 'Electro';
+  return FLOOR_ELEMENT_CYCLE[(Math.max(1, targetFloor) - 1) % FLOOR_ELEMENT_CYCLE.length];
+}
+
 export function createFloorEncounter(
   targetFloor: number,
-  mode: BattleSubMode = 'SPIRE'
+  mode: BattleSubMode = 'SPIRE',
+  domainId?: string
 ): {
   isBossFloor: boolean;
   bossParts: BossPartUnit[];
@@ -919,6 +1169,7 @@ export function createFloorEncounter(
   const baseBossAtk = Math.round(280 * floorScale);
   const baseBossDef = Math.round(140 + targetFloor * 12);
   const segBp = getFloorSegmentBp(targetFloor, false);
+  const primaryEl = getFloorPrimaryElement(targetFloor, domainId);
 
   // MODE: 1v1 ASYNC ARENA (5v5 Gambit AI Defense Squad on Canvas)
   if (mode === 'ARENA') {
@@ -937,6 +1188,7 @@ export function createFloorEncounter(
         id: (`ARENA_${idx + 1}`) as BossPartId,
         name: `Rival ${rData.name.split(' ')[0]}`,
         roleLabel: `${rData.element} ${rData.role}`,
+        element: rData.element,
         rivalHeroId: rData.id,
         hp: uHp,
         maxHp: uHp,
@@ -973,6 +1225,7 @@ export function createFloorEncounter(
         id: 'TENTACLE_FRONT',
         name: 'Left Arm: Void Bastion',
         roleLabel: 'Raid Guard (Taunt)',
+        element: 'Cryo',
         hp: raidHp,
         maxHp: raidHp,
         atk: Math.round(baseBossAtk * 0.9),
@@ -995,6 +1248,7 @@ export function createFloorEncounter(
         id: 'RIGHT_ARM',
         name: 'Right Arm: Abyssal Crusher',
         roleLabel: 'Raid Cleaver',
+        element: 'Fire',
         hp: raidHp,
         maxHp: raidHp,
         atk: Math.round(baseBossAtk * 1.05),
@@ -1017,6 +1271,7 @@ export function createFloorEncounter(
         id: 'BOSS_MAIN',
         name: 'Guild Raid God: Yog-Sothoth (Infinite HP)',
         roleLabel: '90s Raid Core',
+        element: 'Dark',
         hp: raidHp,
         maxHp: raidHp,
         atk: baseBossAtk,
@@ -1039,6 +1294,7 @@ export function createFloorEncounter(
         id: 'EYE_BACK',
         name: 'Cosmic Eye of Madness',
         roleLabel: 'Raid Support',
+        element: 'Electro',
         hp: raidHp,
         maxHp: raidHp,
         atk: Math.round(baseBossAtk * 1.0),
@@ -1066,7 +1322,7 @@ export function createFloorEncounter(
     };
   }
 
-  const isBossFloor = targetFloor % 5 === 0;
+  const isBossFloor = targetFloor % 5 === 0 || Boolean(domainId);
 
   if (!isBossFloor) {
     // Normal Corridor (F1-F4, F6-F9): 2-3 Void Minions with 3-4x lower HP & Stagger
@@ -1078,10 +1334,12 @@ export function createFloorEncounter(
     ];
     const bossParts: BossPartUnit[] = minionSpecs.slice(0, minionCount).map((m, idx) => {
       const mHp = Math.max(1200, Math.round(baseBossHp * m.hpMult));
+      const minionEl = FLOOR_ELEMENT_CYCLE[(targetFloor + idx - 1) % FLOOR_ELEMENT_CYCLE.length];
       return {
         id: m.id,
         name: m.name,
         roleLabel: m.role,
+        element: minionEl,
         hp: mHp,
         maxHp: mHp,
         atk: Math.round(baseBossAtk * 0.65),
@@ -1109,11 +1367,16 @@ export function createFloorEncounter(
     };
   }
 
+  const armLeftEl = FLOOR_ELEMENT_CYCLE[(targetFloor + 1) % FLOOR_ELEMENT_CYCLE.length];
+  const armRightEl = FLOOR_ELEMENT_CYCLE[(targetFloor + 2) % FLOOR_ELEMENT_CYCLE.length];
+  const eyeEl = FLOOR_ELEMENT_CYCLE[(targetFloor + 3) % FLOOR_ELEMENT_CYCLE.length];
+
   const bossParts: BossPartUnit[] = [
     {
       id: 'TENTACLE_FRONT',
       name: 'Left Arm: Void Bastion',
       roleLabel: 'Front Guard (Taunt)',
+      element: domainId ? primaryEl : armLeftEl,
       hp: Math.round(baseBossHp * 0.32),
       maxHp: Math.round(baseBossHp * 0.32),
       atk: Math.round(baseBossAtk * 0.85),
@@ -1136,6 +1399,7 @@ export function createFloorEncounter(
       id: 'RIGHT_ARM',
       name: 'Right Arm: Abyssal Crusher',
       roleLabel: 'Cleave Striker',
+      element: domainId ? primaryEl : armRightEl,
       hp: Math.round(baseBossHp * 0.3),
       maxHp: Math.round(baseBossHp * 0.3),
       atk: Math.round(baseBossAtk * 1.05),
@@ -1156,8 +1420,11 @@ export function createFloorEncounter(
     },
     {
       id: 'BOSS_MAIN',
-      name: "Old God Core: Azathoth's Remnant",
+      name: domainId
+        ? `${domainId.replace('_', ' ')} Sovereign Core`
+        : "Old God Core: Azathoth's Remnant",
       roleLabel: 'Cosmic Core Boss',
+      element: primaryEl,
       hp: baseBossHp,
       maxHp: baseBossHp,
       atk: baseBossAtk,
@@ -1180,6 +1447,7 @@ export function createFloorEncounter(
       id: 'EYE_BACK',
       name: 'Cosmic Eye of Madness',
       roleLabel: 'Backline Support (Aegis)',
+      element: domainId ? primaryEl : eyeEl,
       hp: Math.round(baseBossHp * 0.25),
       maxHp: Math.round(baseBossHp * 0.25),
       atk: Math.round(baseBossAtk * 1.1),
@@ -1588,6 +1856,22 @@ export function runBalanceSelfChecks(): boolean {
   const canUndoLeaf =
     canUndoConstellationNode(19, [...ariesAllExceptKeystones, 19], 'ARIES') &&
     !canUndoConstellationNode(14, [...ariesAllExceptKeystones, 19], 'ARIES');
+  const fireVsWind = evaluateElementalCounter('Fire', 'Wind');
+  const windVsFire = evaluateElementalCounter('Wind', 'Fire');
+  const lightVsDark = evaluateElementalCounter('Light', 'Dark');
+  const darkVsLight = evaluateElementalCounter('Dark', 'Light');
+  const counterChecks =
+    fireVsWind.state === 'ADVANTAGE' &&
+    fireVsWind.dmgMult === 1.3 &&
+    fireVsWind.bpMult === 1.25 &&
+    fireVsWind.bonusCritRate === 15 &&
+    windVsFire.state === 'DISADVANTAGE' &&
+    windVsFire.dmgMult === 0.8 &&
+    windVsFire.bpMult === 0.85 &&
+    lightVsDark.state === 'ADVANTAGE' &&
+    darkVsLight.state === 'ADVANTAGE' &&
+    getRecommendedFloorCP(1) === 8500;
+
   return (
     RESONATORS.length === 18 &&
     Object.keys(ELEMENTAL_REACTION_MATRIX).length === 9 &&
@@ -1602,7 +1886,8 @@ export function runBalanceSelfChecks(): boolean {
     strictConnectedLine &&
     canKeystone19 &&
     lockedOtherKeystone &&
-    canUndoLeaf
+    canUndoLeaf &&
+    counterChecks
   );
 }
 
