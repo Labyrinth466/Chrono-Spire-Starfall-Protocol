@@ -3,34 +3,46 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   DebuffType,
   ELEMENT_META,
+  formatHeroStarLabel,
   FORMATIONS,
   GambitConditionSlot1,
   GambitConditionSlot2,
+  getAscensionShardCost,
+  getDuplicatePullShardAmount,
   getFormationRowBonuses,
   HeroRarity,
   interpolateSkillMult,
   interpolateSkillProc,
+  MAX_HERO_STARS,
   ReactionType,
   RESONATORS,
   ResonatorData,
   SkillSpec,
+  UI_ICONS,
 } from './data/resonators.ts';
 import {
   ALL_GEAR_SLOTS,
   BLESSING_CARDS,
   BlessingCardSpec,
   calculateCurrentSuccessRate,
+  canHeroEquipGear,
   createInitialGearInventory,
   EQUIPMENT_SETS,
   GEAR_DOMAINS,
   GearItem,
   GearSlot,
   getEnhanceRule,
+  getGearIconUrl,
+  getGearItemIconUrl,
   getGearMainStatValue,
+  getHeroAllowedWeaponRole,
+  getWeaponRoleBadgeIconUrl,
+  getWeaponRoleLabel,
   rollMilestoneSubstat,
   SetId,
   SIGIL_CORE_TRAITS,
   StatKey,
+  WeaponRole,
 } from './data/equipment.ts';
 import {
   canUndoConstellationNode,
@@ -66,6 +78,7 @@ import {
   getRecommendedFloorCP,
   HeroProgress,
   ImpactShockwave,
+  PhysicalLootDrop,
   runBalanceSelfChecks,
   sfx,
 } from './engine/combatEngine.ts';
@@ -420,6 +433,40 @@ const INITIAL_HERO_PROGRESS: Record<string, HeroProgress> = Object.fromEntries(
   ])
 );
 
+const INITIAL_HERO_SHARDS: Record<string, number> = Object.fromEntries(
+  RESONATORS.map((r) => [
+    r.id,
+    r.rarity === 'R' ? 25 : r.id === 'H01' || r.id === 'H19' ? 40 : 10,
+  ])
+);
+
+function HeroStarBar({
+  stars,
+  sizeClass = 'w-3.5 h-3.5',
+}: {
+  stars: number;
+  sizeClass?: string;
+}) {
+  const starCount = Math.min(5, Math.max(1, stars));
+  const awakenedCount = Math.max(0, stars - 5);
+  return (
+    <span className="inline-flex items-center gap-0.5 select-none">
+      {Array.from({ length: starCount }).map((_, idx) => {
+        const isAwakened = idx < awakenedCount;
+        return (
+          <img
+            key={idx}
+            src={isAwakened ? UI_ICONS.stars.awakened : UI_ICONS.stars.gold}
+            alt={isAwakened ? 'Awakened Star' : 'Gold Star'}
+            style={{ imageRendering: 'pixelated' }}
+            className={`${sizeClass} object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]`}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
 const ARENA_RIVALS: {
   rank: number;
   name: string;
@@ -566,8 +613,16 @@ export default function App() {
   const [formationId, setFormationId] = useState<'HYPER_CARRY' | 'SOLO_BASTION' | 'BALANCED' | 'VANGUARD'>('BALANCED');
   const [formationLevel, setFormationLevel] = useState(3);
   const [heroProgress, setHeroProgress] = useState<Record<string, HeroProgress>>(INITIAL_HERO_PROGRESS);
+  const [heroShards, setHeroShards] = useState<Record<string, number>>(INITIAL_HERO_SHARDS);
   const [gearInventory, setGearInventory] = useState<GearItem[]>(() => createInitialGearInventory());
-  const [blessings, setBlessings] = useState<Record<string, number>>({ ARCANA_19: 1, ARCANA_08: 1 });
+  const [activeTarotBlessing, setActiveTarotBlessing] = useState<{
+    cardId: string;
+    expiresAtFloor: number;
+  } | null>({ cardId: 'ARCANA_19', expiresAtFloor: 5 });
+  const blessings = useMemo<Record<string, number>>(() => {
+    if (!activeTarotBlessing || floor > activeTarotBlessing.expiresAtFloor) return {};
+    return { [activeTarotBlessing.cardId]: 1 };
+  }, [activeTarotBlessing, floor]);
   const [constellations, setConstellations] = useState<Record<string, number>>({
     ARIES: 2,
     TAURUS: 1,
@@ -608,6 +663,8 @@ export default function App() {
   const [selectedHeroId, setSelectedHeroId] = useState<string>('R01');
   const [heroDetailMode, setHeroDetailMode] = useState<boolean>(false);
   const [selectedGearId, setSelectedGearId] = useState<string>('G_R01_W');
+  const [forgeInventoryFilter, setForgeInventoryFilter] = useState<'ALL' | GearSlot | 'SHARDS'>('ALL');
+  const [draggedGear, setDraggedGear] = useState<{ item: GearItem; x: number; y: number } | null>(null);
   const [forgeFeedback, setForgeFeedback] = useState<{ text: string; success: boolean } | null>(null);
   const [activeBannerId, setActiveBannerId] = useState<'RATE_UP' | 'STANDARD'>('RATE_UP');
   const [exchangeShopOpen, setExchangeShopOpen] = useState<boolean>(false);
@@ -617,6 +674,15 @@ export default function App() {
   const [merchantTab, setMerchantTab] = useState<MerchantTabId>('GOLD');
   const [hasDoneFirstFreePull, setHasDoneFirstFreePull] = useState<boolean>(false);
   const [gachaRevealCards, setGachaRevealCards] = useState<GachaRevealCard[] | null>(null);
+  const [tarotHoldProgress, setTarotHoldProgress] = useState<[number, number, number]>([0, 0, 0]);
+  const [holdingTarotIdx, setHoldingTarotIdx] = useState<number | null>(null);
+  const [gachaHoldProgress, setGachaHoldProgress] = useState<Record<string, number>>({});
+  const [holdingGachaUid, setHoldingGachaUid] = useState<string | null>(null);
+  const [dungeonEntryBanner, setDungeonEntryBanner] = useState<{
+    title: string;
+    subtitle: string;
+    remaining: number;
+  } | null>(null);
   const [guildState, setGuildState] = useState<{
     joined: boolean;
     name: string;
@@ -862,6 +928,7 @@ export default function App() {
     mode: BattleSubMode;
     floor: number;
     waveElapsed: number;
+    waveTransitionTimer: number;
     guildRaidDamage: number;
     isBerserk: boolean;
     staggerSegments: number;
@@ -880,12 +947,14 @@ export default function App() {
     floatingTexts: FloatingText[];
     particles: Particle[];
     shockwaves: ImpactShockwave[];
+    lootDrops: PhysicalLootDrop[];
     cutIn: CutInBannerState | null;
     combatLog: string[];
   }>({
     mode: 'SPIRE',
     floor: 1,
     waveElapsed: 0,
+    waveTransitionTimer: 0,
     guildRaidDamage: 0,
     isBerserk: false,
     staggerSegments: 5,
@@ -904,6 +973,7 @@ export default function App() {
     floatingTexts: [],
     particles: [],
     shockwaves: [],
+    lootDrops: [],
     cutIn: null,
     combatLog: ['Entered Chrono Spire Floor 1 — Old God Remnant Detected.'],
   });
@@ -911,6 +981,7 @@ export default function App() {
   // React HUD snapshot updated at ~15fps so React never bottlenecks 60fps Canvas
   const [hudState, setHudState] = useState(() => ({
     waveElapsed: 0,
+    waveTransitionTimer: 0,
     guildRaidDamage: 0,
     isBerserk: false,
     staggerSegments: 5,
@@ -932,21 +1003,22 @@ export default function App() {
       const activeMode = overrideMode || battleSubMode;
       const encounterMode: BattleSubMode = activeMode === 'DOMAINS' ? 'SPIRE' : activeMode;
       const form = FORMATIONS.find((f) => f.id === formationId) || FORMATIONS[2];
-      // XVII. The Star (ARCANA_17): Wave-start Ultimate Energy (+25% / +30% / +60%)
+      // XVII. The Star (ARCANA_17): Wave-start Ultimate Energy (+40% Single-Tier)
       const starEnergyTier = blessings['ARCANA_17'] || 0;
       const startEnergy =
         starEnergyTier > 0
-          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_17')!.tiers[Math.min(2, starEnergyTier - 1)]
+          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_17')?.value || 40
           : 15;
-      // IX. The Hermit (ARCANA_09): Frontline Wave-Start Shield (20% / 25% / 45% Max HP)
+      // IX. The Hermit (ARCANA_09): Frontline Wave-Start Shield (30% Max HP)
       const hermitShieldTier = blessings['ARCANA_09'] || 0;
       const frontShieldPct =
         hermitShieldTier > 0
-          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_09')!.tiers[Math.min(2, hermitShieldTier - 1)]
+          ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_09')?.value || 30
           : 0;
       // III. The Empress (ARCANA_03): Floor Clear Heal
       const empressTier = blessings['ARCANA_03'] || 0;
-      const floorHealPct = empressTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_03')!.tiers[Math.min(2, empressTier - 1)] : 0;
+      const floorHealPct =
+        empressTier > 0 ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_03')?.value || 35 : 0;
 
       const prevHeroes = simRef.current.heroes;
       const newHeroes: CombatHeroUnit[] = partyIds.map((id, idx) => {
@@ -960,7 +1032,7 @@ export default function App() {
         const x = isFront ? 290 : 150;
         const ySpan = 140;
         const baseY = 275;
-        const yOffset = rowCount === 1 ? 0 : ((rowIdx / (rowCount - 1)) - 0.5) * ySpan;
+        const yOffset = rowCount === 1 ? 0 : (rowIdx / (rowCount - 1) - 0.5) * ySpan;
 
         const prev = prevHeroes.find((h) => h.id === id);
         let startHp = st.hp;
@@ -978,14 +1050,32 @@ export default function App() {
           stats: st,
           hp: startHp,
           maxHp: st.hp,
-          shield: (isFront && frontShieldPct > 0 ? Math.round((st.hp * frontShieldPct) / 100) : 0) + titanWaveShield,
+          shield:
+            (isFront && frontShieldPct > 0 ? Math.round((st.hp * frontShieldPct) / 100) : 0) +
+            titanWaveShield,
           energy: preserveHpRatio && prev ? Math.max(startEnergy, prev.energy) : startEnergy,
           basicTimer: 0.3 + idx * 0.18,
           activeCd: 1.5 + idx * 0.4,
           chainCd: 0,
           titanShieldCd: 0,
           reviveUsed: false,
-          buffs: { atkPct: 0, atkTimer: 0, defPct: 0, defTimer: 0, critRatePct: 0, critTimer: 0, breakPct: 0, breakTimer: 0 },
+          buffs: {
+            atkPct: 0,
+            atkTimer: 0,
+            defPct: 0,
+            defTimer: 0,
+            critRatePct: 0,
+            critTimer: 0,
+            breakPct: 0,
+            breakTimer: 0,
+            immortalTimer: 0,
+            regenPctPerSec: 0,
+            regenTimer: 0,
+            spdBonusPct: 0,
+            spdTimer: 0,
+            critDmgBonusPct: 0,
+            critDmgTimer: 0,
+          },
           x,
           y: Math.round(baseY + yOffset),
           animOffset: 0,
@@ -999,43 +1089,45 @@ export default function App() {
         };
       });
 
-        const domainMap: Record<string, string> = {
-          BOUNTY: 'GOLD_VAULT',
-          STRIKER: 'DOMAIN_I',
-          DEFENDER: 'DOMAIN_II',
-          TACTICIAN: 'DOMAIN_III',
-        };
-        const activeChallenge = activeDomainChallengeRef.current;
-        const mappedDomainId = activeChallenge ? domainMap[activeChallenge.domainId] : undefined;
-        const encounter = createFloorEncounter(targetFloor, encounterMode, mappedDomainId);
+      const domainMap: Record<string, string> = {
+        BOUNTY: 'GOLD_VAULT',
+        STRIKER: 'DOMAIN_I',
+        DEFENDER: 'DOMAIN_II',
+        TACTICIAN: 'DOMAIN_III',
+      };
+      const activeChallenge = activeDomainChallengeRef.current;
+      const mappedDomainId = activeChallenge ? domainMap[activeChallenge.domainId] : undefined;
+      const encounter = createFloorEncounter(targetFloor, encounterMode, mappedDomainId);
 
-        const nextTheme: BgmThemeMode =
-          encounter.isBossFloor || encounterMode === 'GUILD_RAID' ? 'BOSS' : 'CORRIDOR';
-        sfx.setBgmTheme(nextTheme);
+      const nextTheme: BgmThemeMode =
+        encounter.isBossFloor || encounterMode === 'GUILD_RAID' ? 'BOSS' : 'CORRIDOR';
+      sfx.setBgmTheme(nextTheme);
 
-        simRef.current = {
-          ...simRef.current,
-          mode: encounterMode,
-          floor: targetFloor,
-          waveElapsed: 0,
-          guildRaidDamage: 0,
-          isBerserk: false,
-          staggerSegments: encounter.staggerSegments,
-          currentSegmentBp: encounter.maxSegmentBp,
-          maxSegmentBp: encounter.maxSegmentBp,
-          isStaggered: false,
-          staggerTimer: 0,
-          staggerWarningTimer: 0,
-          antiStaggerTimer: 0,
-          manualFocusId: null,
-          firestormCd: 0,
-          heroes: newHeroes,
-          bossParts: encounter.bossParts,
-          shockwaves: [],
-        };
-      },
-      [partyIds, formationId, blessings, heroProgress, computedStatsMap, battleSubMode]
-    );
+      simRef.current = {
+        ...simRef.current,
+        mode: encounterMode,
+        floor: targetFloor,
+        waveElapsed: 0,
+        waveTransitionTimer: 0,
+        guildRaidDamage: 0,
+        isBerserk: false,
+        staggerSegments: encounter.staggerSegments,
+        currentSegmentBp: encounter.maxSegmentBp,
+        maxSegmentBp: encounter.maxSegmentBp,
+        isStaggered: false,
+        staggerTimer: 0,
+        staggerWarningTimer: 0,
+        antiStaggerTimer: 0,
+        manualFocusId: null,
+        firestormCd: 0,
+        heroes: newHeroes,
+        bossParts: encounter.bossParts,
+        shockwaves: [],
+        lootDrops: [],
+      };
+    },
+    [partyIds, formationId, blessings, heroProgress, computedStatsMap, battleSubMode]
+  );
 
   // Re-initialize wave when changing formation/party or switching live combat sub-modes
   useEffect(() => {
@@ -1180,11 +1272,10 @@ export default function App() {
         if (rem >= sim.currentSegmentBp) {
           rem -= sim.currentSegmentBp;
           sim.staggerSegments -= 1;
-          // XVI. The Tower (ARCANA_16): Breaking 1 Boss Stagger bar triggers a 100%/150%/250% Boss ATK explosion
+          // XVI. The Tower (ARCANA_16): Breaking 1 Boss Stagger bar triggers a 200% Boss ATK explosion
           const towerTier = blessings['ARCANA_16'] || 0;
           if (towerTier > 0) {
-            const towerMult =
-              BLESSING_CARDS.find((b) => b.id === 'ARCANA_16')!.tiers[Math.min(2, towerTier - 1)] / 100;
+            const towerMult = (BLESSING_CARDS.find((b) => b.id === 'ARCANA_16')?.value || 200) / 100;
             sim.bossParts.forEach((bp) => {
               if (!bp.alive) return;
               const expDmg = Math.round(bp.atk * towerMult);
@@ -1229,6 +1320,32 @@ export default function App() {
       }
     };
 
+    const spawnPhysicalLootDrop = (sim: typeof simRef.current, x: number, y: number, isBossPart: boolean) => {
+      const roll = Math.random();
+      const rarity: 'R' | 'SR' | 'SSR' =
+        isBossPart && roll < 0.38 ? 'SSR' : roll < 0.55 ? 'SR' : 'R';
+      const randSet = EQUIPMENT_SETS[Math.floor(Math.random() * EQUIPMENT_SETS.length)];
+      const slots: GearSlot[] = ['Weapon', 'Armor', 'Ring I', 'Ring II', 'Core Sigil'];
+      const pickedSlot = slots[Math.floor(Math.random() * slots.length)];
+      const roles: WeaponRole[] = ['MELEE', 'RANGED', 'MAGIC'];
+      const wRole = pickedSlot === 'Weapon' ? roles[Math.floor(Math.random() * roles.length)] : undefined;
+      const iconUrl = getGearIconUrl(randSet.id, pickedSlot, wRole);
+      const groundY = Math.min(395, Math.max(210, y + 28 + (Math.random() - 0.5) * 24));
+      sim.lootDrops.push({
+        id: Math.random(),
+        x,
+        y: y - 10,
+        vx: (Math.random() - 0.5) * 95,
+        vy: -165 - Math.random() * 55,
+        groundY,
+        rarity,
+        iconUrl,
+        label: `${rarity} ${(randSet.displayName || randSet.id).split(' ')[0]} ${pickedSlot}`,
+        life: 3.4,
+        maxLife: 3.4,
+      });
+    };
+
     const executeHeroSkill = (sim: typeof simRef.current, hero: CombatHeroUnit, skill: SkillSpec, skillLv: number) => {
       hero.animOffset = 0.28;
       hero.animState =
@@ -1256,7 +1373,7 @@ export default function App() {
         hero.energy = 0;
         const worldTier = blessings['ARCANA_21'] || 0;
         if (worldTier > 0) {
-          const chance = BLESSING_CARDS.find((b) => b.id === 'ARCANA_21')!.tiers[Math.min(2, worldTier - 1)];
+          const chance = BLESSING_CARDS.find((b) => b.id === 'ARCANA_21')?.value || 50;
           if (Math.random() * 100 < chance) {
             hero.energy = 50;
             spawnFloatingText('THE WORLD +50% EN', hero.x, hero.y - 25, '#38bdf8', 0.95);
@@ -1280,32 +1397,99 @@ export default function App() {
         sfx.play('chain');
         if (hero.stats.fourPieceSet === 'Astral Nexus') {
           sim.heroes.forEach((ally) => {
-            ally.buffs.atkPct = 15;
-            ally.buffs.atkTimer = 4.0;
+            ally.buffs.atkPct = Math.max(ally.buffs.atkPct, 15);
+            ally.buffs.atkTimer = Math.max(ally.buffs.atkTimer, 4.0);
           });
         }
       } else if (skill.type === 'Active') {
         sfx.play('skill');
       }
 
-      // Party Heals & Shields (Aurelia H13 Chain & Ultimate, Lumina H15)
+      // Single-Target Burst Healers (LOWEST_HP_ALLY: H19 Seraphina Vale, H21 Carmilla Vane) & AoE Party Healers (TEAM_HEAL_AOE: H20 Sylvanus Faye, H22 Celeste Noel, H13 Aurelia, R04 Dawn Cleric)
       if (skill.isHeal) {
         sfx.play('heal');
         const healMult = (multPct / 100) * (1 + hero.stats.healingBonus / 100);
         const rawHeal = Math.round(effAtk * healMult);
-        sim.heroes.forEach((ally) => {
-          if (ally.hp <= 0) return;
-          const overheal = Math.max(0, ally.hp + rawHeal - ally.maxHp);
-          ally.hp = Math.min(ally.maxHp, ally.hp + rawHeal);
-          if (overheal > 0 && hero.stats.fourPieceSet === 'Radiant Dawn') {
-            ally.shield = Math.min(Math.round(ally.maxHp * 0.3), ally.shield + overheal);
+        const aliveAllies = sim.heroes.filter((a) => a.hp > 0);
+        const healTargets =
+          skill.targetRule === 'LOWEST_HP_ALLY'
+            ? aliveAllies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp).slice(0, 1)
+            : aliveAllies;
+
+        healTargets.forEach((ally) => {
+          // Carmilla Vane (H21) 5★ Passive: +40% Heal on allies below 40% HP
+          const lowHpBonus =
+            hero.id === 'H21' && hero.prog.stars >= 5 && ally.hp / ally.maxHp < 0.4 ? 1.4 : 1.0;
+          const finalHeal = Math.round(rawHeal * lowHpBonus);
+          const overheal = Math.max(0, ally.hp + finalHeal - ally.maxHp);
+          ally.hp = Math.min(ally.maxHp, ally.hp + finalHeal);
+
+          // Overheal-to-Shield (Radiant Dawn 4-PC or Sylvanus Faye H20 Ultimate)
+          if (overheal > 0 && (hero.stats.fourPieceSet === 'Radiant Dawn' || skill.overhealToShieldMaxHpPct)) {
+            const capPct = skill.overhealToShieldMaxHpPct || 30;
+            ally.shield = Math.min(Math.round((ally.maxHp * capPct) / 100), ally.shield + overheal);
           }
+
+          // Direct Max HP% Shield (Seraphina Vale H19 Chain/Ult, Celeste Noel H22 Chain)
+          if (skill.shieldMaxHpPct) {
+            ally.shield = Math.max(ally.shield, Math.round((ally.maxHp * skill.shieldMaxHpPct) / 100));
+          }
+
+          // Frost Immortality (Seraphina Vale H19 Ultimate: HP cannot drop below 1 for 3.0s)
+          if (skill.frostImmortalitySec) {
+            ally.buffs.immortalTimer = Math.max(ally.buffs.immortalTimer, skill.frostImmortalitySec);
+            spawnFloatingText(`❄️ IMMORTAL ${skill.frostImmortalitySec}s`, ally.x, ally.y - 26, '#38bdf8', 1.05);
+          }
+
+          // Continuous Regen HoT (Sylvanus Faye H20 Active/Chain/Ult)
+          if (skill.regenMaxHpPctPerSec) {
+            ally.buffs.regenPctPerSec = Math.max(ally.buffs.regenPctPerSec, skill.regenMaxHpPctPerSec);
+            ally.buffs.regenTimer = 4.0;
+          }
+
+          // Ally ATK / CRIT DMG / DEF / SPD Buffs
+          if (skill.allyAtkBuffPct) {
+            ally.buffs.atkPct = Math.max(ally.buffs.atkPct, skill.allyAtkBuffPct);
+            ally.buffs.atkTimer = 5.0;
+          }
+          if (skill.allyCritDmgBuffPct) {
+            ally.buffs.critDmgBonusPct = Math.max(ally.buffs.critDmgBonusPct, skill.allyCritDmgBuffPct);
+            ally.buffs.critDmgTimer = 5.0;
+          }
+          if (skill.allyDefBuffPct) {
+            ally.buffs.defPct = Math.max(ally.buffs.defPct, skill.allyDefBuffPct);
+            ally.buffs.defTimer = 4.5;
+          }
+          if (skill.allySpdBuffPct) {
+            ally.buffs.spdBonusPct = Math.max(ally.buffs.spdBonusPct, skill.allySpdBuffPct);
+            ally.buffs.spdTimer = 4.5;
+          }
+
           if (skill.type === 'Ultimate' && hero.id === 'H13') {
             ally.shield = Math.max(ally.shield, Math.round(ally.maxHp * 0.2));
             ally.energy = Math.min(100, ally.energy + 15);
           }
-          spawnFloatingText(`+${rawHeal}`, ally.x, ally.y - 10, '#34d399', 0.95);
+
+          const tag = skill.targetRule === 'LOWEST_HP_ALLY' ? `💚 +${finalHeal.toLocaleString()}!` : `+${finalHeal.toLocaleString()}`;
+          spawnFloatingText(tag, ally.x, ally.y - 10, '#34d399', skill.targetRule === 'LOWEST_HP_ALLY' ? 1.15 : 0.95);
+          spawnBurstParticles(ally.x, ally.y, '#34d399', skill.targetRule === 'LOWEST_HP_ALLY' ? 12 : 6);
         });
+
+        // Gain Ultimate Energy on Basic/Active/Chain heal skills
+        if (skill.type !== 'Ultimate') {
+          const baseGain = skill.type === 'Basic' ? 7 : skill.type === 'Active' ? 14 : 18;
+          hero.energy = Math.min(100, hero.energy + baseGain * (hero.stats.energyCharge / 100));
+        } else if (hero.stats.fourPieceSet === 'Overload') {
+          hero.energy = Math.min(100, hero.energy + 25);
+        }
+
+        // Pure Single-Target or Team Heal skills (non-Basic) complete after healing allies
+        if (
+          skill.type !== 'Basic' &&
+          (skill.targetRule === 'LOWEST_HP_ALLY' || skill.targetRule === 'TEAM_HEAL_AOE')
+        ) {
+          return;
+        }
       }
 
       // Specific Utility Effects
@@ -1336,11 +1520,12 @@ export default function App() {
           ally.buffs.breakTimer = 5.0;
         });
       }
-      if (hero.id === 'H13' && skill.type === 'Basic') {
+      if ((hero.id === 'H13' || hero.id === 'H19' || hero.id === 'H20' || hero.id === 'H21' || hero.id === 'H22') && skill.type === 'Basic') {
         const lowest = sim.heroes.filter((a) => a.hp > 0).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
         if (lowest) {
-          const hAmt = Math.round(effAtk * 0.35 * (1 + hero.stats.healingBonus / 100));
+          const hAmt = Math.round(effAtk * 0.42 * (1 + hero.stats.healingBonus / 100));
           lowest.hp = Math.min(lowest.maxHp, lowest.hp + hAmt);
+          spawnFloatingText(`+${hAmt}`, lowest.x, lowest.y - 12, '#34d399', 0.85);
         }
       }
       if (hero.id === 'H13' && skill.type === 'Active') {
@@ -1354,13 +1539,13 @@ export default function App() {
       }
 
       // Gain Ultimate Energy on Basic/Active/Chain
-      if (skill.type !== 'Ultimate') {
+      if (skill.type !== 'Ultimate' && !skill.isHeal) {
         const baseGain = skill.type === 'Basic' ? 7 : skill.type === 'Active' ? 14 : 18;
         hero.energy = Math.min(100, hero.energy + baseGain * (hero.stats.energyCharge / 100));
       }
 
       // [4-PC Overload]: Refund 25% Ultimate Energy immediately after casting Ultimate
-      if (skill.type === 'Ultimate' && hero.stats.fourPieceSet === 'Overload') {
+      if (skill.type === 'Ultimate' && hero.stats.fourPieceSet === 'Overload' && !skill.isHeal) {
         hero.energy = Math.min(100, hero.energy + 25);
       }
 
@@ -1369,7 +1554,6 @@ export default function App() {
         if (!target.alive) return;
 
         // COMPLETE 9-REACTION ELEMENTAL DETONATION MATRIX (SSOT v2.1 Module 4)
-        // Rule: Only Gambit Tactical Chain Skills detonate Elemental Reactions and immediately consume the setup status!
         let reactionTriggered: ReactionType | null = null;
         let reactionDmgMult = 1.0;
         let ignoreDefPct = 0;
@@ -1378,7 +1562,7 @@ export default function App() {
         const loverTier = blessings['ARCANA_06'] || 0;
         const reactionBlessBonus =
           loverTier > 0
-            ? 1 + BLESSING_CARDS.find((b) => b.id === 'ARCANA_06')!.tiers[Math.min(2, loverTier - 1)] / 100
+            ? 1 + (BLESSING_CARDS.find((b) => b.id === 'ARCANA_06')?.value || 55) / 100
             : 1.0;
         const omen4Bonus = hero.stats.fourPieceSet === 'Voidweaver' ? 1.4 : 1.0;
         const trigEl = hero.data.element;
@@ -1396,14 +1580,12 @@ export default function App() {
 
         if (skill.type === 'Chain') {
           if (trigEl === 'Fire' && hasDebuff('Freeze')) {
-            // 1. MELTDOWN (Cryo -> Fire): Consume Freeze -> grant 8.0s Freeze Immunity
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Freeze');
             target.freezeResistTimer = 8.0;
             reactionTriggered = 'MELTDOWN';
             reactionDmgMult = 1.8 * reactionBlessBonus * omen4Bonus;
             upsertDebuff(target, 'Defenseless', 4.0, 1);
           } else if (trigEl === 'Cryo' && hasDebuff('Shock')) {
-            // 2. SUPERCONDUCT (Electro -> Cryo): Consume Shock
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Shock');
             reactionTriggered = 'SUPERCONDUCT';
             reactionDmgMult = 1.35 * reactionBlessBonus * omen4Bonus;
@@ -1413,7 +1595,6 @@ export default function App() {
               ally.buffs.breakTimer = 4.0;
             });
           } else if (trigEl === 'Wind' && hasDebuff('Burn')) {
-            // 3. FIRESTORM (Fire -> Wind): Consume Burn
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Burn');
             reactionTriggered = 'FIRESTORM';
             reactionDmgMult = 1.45 * reactionBlessBonus * omen4Bonus;
@@ -1429,13 +1610,11 @@ export default function App() {
               });
             }
           } else if (trigEl === 'Electro' && hasDebuff('Burn')) {
-            // 4. OVERLOAD PLASMA (Fire -> Electro): Consume Burn
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Burn');
             reactionTriggered = 'OVERLOAD PLASMA';
             reactionDmgMult = 2.2 * reactionBlessBonus * omen4Bonus;
             applyBreakDamage(sim, 50);
           } else if (trigEl === 'Wind' && hasDebuff('Freeze')) {
-            // 5. BLIZZARD (Cryo -> Wind): Consume Freeze -> grant 8.0s Freeze Immunity
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Freeze');
             target.freezeResistTimer = 8.0;
             reactionTriggered = 'BLIZZARD';
@@ -1443,14 +1622,12 @@ export default function App() {
             upsertDebuff(target, 'Slow', 4.0, 1);
             applyBreakDamage(sim, 40);
           } else if (trigEl === 'Wind' && hasDebuff('Shock')) {
-            // 6. THUNDER GALE (Electro -> Wind): Consume Shock
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Shock');
             reactionTriggered = 'THUNDER GALE';
             const bleedStacks = target.debuffs.find((d) => d.type === 'Bleed')?.stacks || 1;
             reactionDmgMult = 1.5 * (1 + bleedStacks * 0.15) * reactionBlessBonus * omen4Bonus;
             applyBreakDamage(sim, 45);
           } else if (trigEl === 'Dark' && hasDebuff('Luminous Mark')) {
-            // 7. TWILIGHT EXECUTION (Light -> Dark): Consume Luminous Mark
             target.debuffs = target.debuffs.filter((d) => d.type !== 'Luminous Mark');
             reactionTriggered = 'TWILIGHT EXECUTION';
             reactionDmgMult = 1.6 * reactionBlessBonus * omen4Bonus;
@@ -1461,7 +1638,6 @@ export default function App() {
             trigEl === 'Light' &&
             target.debuffs.some((d) => d.type === 'Burn' || d.type === 'Freeze' || d.type === 'Shock' || d.type === 'Bleed')
           ) {
-            // 8. RADIANT INFUSION (Core 4 -> Light): Consume 1 Core Debuff
             const idx = target.debuffs.findIndex(
               (d) => d.type === 'Burn' || d.type === 'Freeze' || d.type === 'Shock' || d.type === 'Bleed'
             );
@@ -1478,7 +1654,6 @@ export default function App() {
             trigEl === 'Dark' &&
             target.debuffs.some((d) => d.type === 'Burn' || d.type === 'Freeze' || d.type === 'Shock' || d.type === 'Bleed')
           ) {
-            // 9. ABYSSAL DECAY (Core 4 -> Dark: Extend debuff duration +2.0s without consuming)
             target.debuffs.forEach((d) => {
               if (d.type === 'Burn' || d.type === 'Freeze' || d.type === 'Shock' || d.type === 'Bleed') {
                 d.remaining += 2.0;
@@ -1495,15 +1670,11 @@ export default function App() {
           pushLog(`${hero.data.name} triggered ${reactionTriggered} on ${target.name}!`);
           spawnBurstParticles(target.x, target.y, ELEMENT_META[hero.data.element].color, 22);
           spawnShockwave(target.x, target.y, ELEMENT_META[hero.data.element].color, '#fde047', 78);
-          // Yuzuki (H07) 5-star passive: +15% Energy on any reaction
           const yuzuki = sim.heroes.find((h) => h.id === 'H07' && h.hp > 0 && h.prog.stars >= 5);
           if (yuzuki) yuzuki.energy = Math.min(100, yuzuki.energy + 15);
         }
 
-        // Elemental Advantage / Counter Evaluation (WEAK! +30% DMG / +25% BP / +15% Crit vs RESIST -25% DMG / -20% BP)
         const counterInfo = evaluateElementalCounter(hero.data.element, target.element || 'Dark');
-
-        // Crit Rate & Crit DMG calculation
         const hasBurn = target.debuffs.some((d) => d.type === 'Burn');
         const hasLuminous = target.debuffs.some((d) => d.type === 'Luminous Mark');
         const hasCorrosion = target.debuffs.some((d) => d.type === 'Corrosion');
@@ -1520,7 +1691,7 @@ export default function App() {
         const isCrit = Math.random() * 100 < critChance;
         let critMult = 1.0;
         if (isCrit) {
-          let cDmg = hero.stats.critDmg;
+          let cDmg = hero.stats.critDmg + hero.buffs.critDmgBonusPct;
           if (hero.id === 'H01' && skill.type === 'Ultimate') cDmg += 30;
           if (hero.id === 'H10' && hero.prog.stars >= 5 && bleedEntry && bleedEntry.stacks >= 5) cDmg += 50;
           if (sim.isStaggered && skill.type === 'Ultimate' && hero.stats.fourPieceSet === 'Eclipse') cDmg += 60;
@@ -1528,14 +1699,12 @@ export default function App() {
           if (hero.stats.fourPieceSet === 'Starfall Executioner') ignoreDefPct = Math.min(100, ignoreDefPct + 15);
         }
 
-        // DEF Mitigation Formula (Module 4.1): Damage = RawDmg * (100 / (100 + EffectiveDEF))
         let defMod = 1.0;
         if (hasBurn) defMod -= 0.15;
         if (target.debuffs.some((d) => d.type === 'Defenseless')) defMod -= 0.25;
         const effectiveDef = forceTrueDmg ? 0 : Math.max(0, target.def * Math.max(0.2, defMod) * (1 - ignoreDefPct / 100));
         const defMitigation = 100 / (100 + effectiveDef * 0.25);
 
-        // Skill Type & Set Multipliers
         let bonusMult = reactionDmgMult * counterInfo.dmgMult;
         if (skill.type === 'Basic' && hero.stats.fourPieceSet === 'Volatus') bonusMult *= 1.4;
         if (skill.type === 'Chain') bonusMult *= 1 + (partyResonance.chainDmgPct + (hero.stats.activeSets.some((s) => s.set === 'Astral Nexus') ? 25 : 0)) / 100;
@@ -1552,12 +1721,11 @@ export default function App() {
           const judgeTier = blessings['ARCANA_20'] || 0;
           const judgeBonus =
             judgeTier > 0
-              ? BLESSING_CARDS.find((b) => b.id === 'ARCANA_20')!.tiers[Math.min(2, judgeTier - 1)] / 100
+              ? (BLESSING_CARDS.find((b) => b.id === 'ARCANA_20')?.value || 55) / 100
               : 0;
           bonusMult *= 1.5 + judgeBonus;
         }
 
-        // Kahori (H10) 4* Double Basic Attack proc & Ultimate Bleed Detonation
         let totalMult = multPct / 100;
         if (hero.id === 'H10' && skill.type === 'Basic' && hero.prog.stars >= 4 && Math.random() < 0.3) {
           totalMult *= 1.5;
@@ -1571,7 +1739,7 @@ export default function App() {
         // Tarot ARCANA_13: Death's Execution True DMG below 25% HP
         const deathTier = blessings['ARCANA_13'] || 0;
         if (deathTier > 0 && target.hp / target.maxHp < 0.25) {
-          const extraPct = BLESSING_CARDS.find((b) => b.id === 'ARCANA_13')!.tiers[Math.min(2, deathTier - 1)];
+          const extraPct = BLESSING_CARDS.find((b) => b.id === 'ARCANA_13')?.value || 45;
           finalDmg = Math.round(finalDmg * (1 + extraPct / 100));
         }
 
@@ -1579,7 +1747,6 @@ export default function App() {
           sim.guildRaidDamage += finalDmg;
         }
 
-        // Apply Damage to Boss Part Shield then HP ([4-PC Omen / Voidweaver] ignores Boss Shield)
         const ignoresShield = hero.stats.fourPieceSet === 'Voidweaver';
         if (target.shield > 0 && !ignoresShield) {
           const absorbed = Math.min(target.shield, finalDmg);
@@ -1589,7 +1756,6 @@ export default function App() {
         target.hp = Math.max(0, target.hp - finalDmg);
         target.hitFlash = 0.08;
 
-        // Luminous Mark Lifesteal (8%)
         if (hasLuminous && hero.hp > 0) {
           hero.hp = Math.min(hero.maxHp, hero.hp + Math.round(finalDmg * 0.08));
         }
@@ -1642,14 +1808,11 @@ export default function App() {
           skill.type === 'Ultimate' ? 20 : isCrit || isWeak ? 10 : 5
         );
 
-        // Break Damage Formula (Module 2.3): BP = Base * (BreakPower% / 100) * ShockMultiplier * CounterBpMult
         const shockMult = target.debuffs.some((d) => d.type === 'Shock') ? 1.35 : 1.0;
         const totalBreakPct = hero.stats.breakPower + hero.buffs.breakPct;
         const bpDealt = Math.round(skill.breakPower * (totalBreakPct / 100) * shockMult * counterInfo.bpMult);
         applyBreakDamage(sim, bpDealt);
 
-        // Status Proc Chance Budget (SSOT v2.1 Module 3.2):
-        // Total Proc Chance = Base Skill Chance + Gear Status Chance Bonus (Ring +25% + 2-PC Omen +20%) - Boss Effect RES
         if (skill.debuff) {
           const isShocked = target.debuffs.some((d) => d.type === 'Shock');
           const effRes = skill.type === 'Ultimate' && hero.id === 'H07' ? Math.max(0, target.effectRes - 25) : target.effectRes;
@@ -1681,19 +1844,18 @@ export default function App() {
           }
         }
 
-        // Check if Part Destroyed
+        // Check if Part Destroyed -> Spawn Physical Loot Drop with Rarity Light Pillar
         if (target.hp <= 0 && target.alive) {
           target.alive = false;
           target.debuffs = [];
           spawnBurstParticles(target.x, target.y, '#f43f5e', 26);
           spawnShockwave(target.x, target.y, '#f43f5e', '#fde047', 90);
+          spawnPhysicalLootDrop(sim, target.x, target.y, target.id === 'BOSS_MAIN');
           pushLog(`${target.name} destroyed!`);
-          // Eye of Madness destruction penalty: Boss loses 1 full Stagger bar immediately (Module 6.3)
           if (target.id === 'EYE_BACK') {
             applyBreakDamage(sim, sim.maxSegmentBp);
             pushLog('Eye of Madness shattered! Old God Core loses 1 Stagger Segment!');
           }
-          // Noctis (H16) 5-star passive: +50% Energy on kill
           const noctis = sim.heroes.find((h) => h.id === 'H16' && h.hp > 0 && h.prog.stars >= 5);
           if (noctis) noctis.energy = Math.min(100, noctis.energy + 50);
         }
@@ -1720,11 +1882,75 @@ export default function App() {
       return false;
     };
 
+    const tickLootAndVfx = (sim: typeof simRef.current, dt: number) => {
+      sim.floatingTexts.forEach((ft) => {
+        ft.y += ft.vy * dt;
+        ft.life -= dt;
+      });
+      sim.floatingTexts = sim.floatingTexts.filter((ft) => ft.life > 0);
+
+      sim.particles.forEach((pt) => {
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.life -= dt;
+        pt.alpha = pt.life / pt.maxLife;
+      });
+      sim.particles = sim.particles.filter((pt) => pt.life > 0);
+
+      sim.shockwaves.forEach((sw) => {
+        sw.life -= dt;
+      });
+      sim.shockwaves = sim.shockwaves.filter((sw) => sw.life > 0);
+
+      sim.lootDrops.forEach((drop) => {
+        drop.life -= dt;
+        if (drop.y < drop.groundY || drop.vy < 0) {
+          drop.x += drop.vx * dt;
+          drop.y += drop.vy * dt;
+          drop.vy += 520 * dt;
+          if (drop.y >= drop.groundY) {
+            drop.y = drop.groundY;
+            drop.vy = Math.abs(drop.vy) > 45 ? -drop.vy * 0.32 : 0;
+            drop.vx *= 0.45;
+          }
+        }
+      });
+      sim.lootDrops = sim.lootDrops.filter((drop) => drop.life > 0);
+    };
+
     const tickSimulation = (dt: number) => {
       const sim = simRef.current;
 
       if (sim.hitstopTimer > 0) {
         sim.hitstopTimer = Math.max(0, sim.hitstopTimer - dt);
+        return;
+      }
+
+      // 2.8s WAVE_TRANSITION March Between Spire Floors (4.0x Parallax Scroll + RUN_DASH)
+      if (sim.waveTransitionTimer > 0) {
+        sim.waveTransitionTimer = Math.max(0, sim.waveTransitionTimer - dt);
+        sim.heroes.forEach((u) => {
+          if (u.hp > 0) {
+            u.animState = 'RUN_DASH';
+            u.animTimer = 0.25;
+          }
+        });
+        tickLootAndVfx(sim, dt);
+        if (sim.waveTransitionTimer <= 0) {
+          const clearedFloor = sim.floor;
+          const nextFl = clearedFloor + 1;
+          setFloor(nextFl);
+          setHighestFloor((hf) => Math.max(hf, nextFl));
+          if (clearedFloor % 5 === 0) {
+            const shuffled = [...BLESSING_CARDS].sort(() => Math.random() - 0.5).slice(0, 3);
+            setTarotFlipped([false, false, false]);
+            setTarotHoldProgress([0, 0, 0]);
+            setHoldingTarotIdx(null);
+            setTarotAutoTimer(6.0);
+            setBlessingChoices(shuffled);
+          }
+          initFloorWave(nextFl, true, 'SPIRE');
+        }
         return;
       }
 
@@ -1736,7 +1962,7 @@ export default function App() {
         if (sim.cutIn.remaining <= 0) sim.cutIn = null;
       }
 
-      // Check 90s Guild Raid Completion (Scaled by Easy / Normal / Hard Score Multiplier)
+      // Check 90s Guild Raid Completion
       if (sim.mode === 'GUILD_RAID' && sim.waveElapsed >= 90) {
         const diffSpec = GUILD_RAID_DIFF_SPECS[guildRaidDiffRef.current];
         const scoredDamage = Math.round(sim.guildRaidDamage * diffSpec.scoreMult);
@@ -1751,7 +1977,7 @@ export default function App() {
         return;
       }
 
-      // Check 60s Berserk Phase (Mental Corruption - Module 2.3 & 6.3)
+      // Check 60s Berserk Phase (Mental Corruption)
       if (!sim.isBerserk && sim.waveElapsed >= 60) {
         sim.isBerserk = true;
         const newSegBp = getFloorSegmentBp(sim.floor, true);
@@ -1791,6 +2017,15 @@ export default function App() {
         if (u.buffs.defTimer > 0) { u.buffs.defTimer -= dt; if (u.buffs.defTimer <= 0) u.buffs.defPct = 0; }
         if (u.buffs.critTimer > 0) { u.buffs.critTimer -= dt; if (u.buffs.critTimer <= 0) u.buffs.critRatePct = 0; }
         if (u.buffs.breakTimer > 0) { u.buffs.breakTimer -= dt; if (u.buffs.breakTimer <= 0) u.buffs.breakPct = 0; }
+        if (u.buffs.immortalTimer > 0) { u.buffs.immortalTimer = Math.max(0, u.buffs.immortalTimer - dt); }
+        if (u.buffs.spdTimer > 0) { u.buffs.spdTimer -= dt; if (u.buffs.spdTimer <= 0) u.buffs.spdBonusPct = 0; }
+        if (u.buffs.critDmgTimer > 0) { u.buffs.critDmgTimer -= dt; if (u.buffs.critDmgTimer <= 0) u.buffs.critDmgBonusPct = 0; }
+        if (u.buffs.regenTimer > 0) {
+          u.buffs.regenTimer -= dt;
+          const hotAmt = Math.round((u.maxHp * (u.buffs.regenPctPerSec / 100)) * dt);
+          if (hotAmt > 0) u.hp = Math.min(u.maxHp, u.hp + hotAmt);
+          if (u.buffs.regenTimer <= 0) u.buffs.regenPctPerSec = 0;
+        }
 
         u.activeCd = Math.max(0, u.activeCd - dt);
         u.chainCd = Math.max(0, u.chainCd - dt);
@@ -1816,9 +2051,10 @@ export default function App() {
           return;
         }
 
-        // 4b. Basic Attack (Interval = 115 / SPD seconds - Module 4.1)
+        // 4b. Basic Attack (Interval = 115 / EffectiveSPD seconds)
         if (u.basicTimer <= 0) {
-          u.basicTimer = 115 / Math.max(50, u.stats.spd);
+          const effSpd = Math.max(50, u.stats.spd * (1 + u.buffs.spdBonusPct / 100));
+          u.basicTimer = 115 / effSpd;
           executeHeroSkill(sim, u, u.data.skills.basic, u.prog.skillLevels.basic);
         }
       });
@@ -1840,12 +2076,10 @@ export default function App() {
           if (b.voidTimer <= 0) b.voidStacks = 0;
         }
 
-        // Berserk Tentacle self-heal 5%/s
         if (sim.isBerserk && b.id === 'TENTACLE_FRONT') {
           b.hp = Math.min(b.maxHp, b.hp + Math.round(b.maxHp * 0.05 * dt));
         }
 
-        // Tick DoTs (Burn: 30% ATK/s, Bleed: 20% ATK/s per stack) + Freeze Expiry -> 8.0s Freeze Immunity
         b.debuffs.forEach((d) => {
           d.remaining -= dt;
           if (d.type === 'Burn') {
@@ -1866,10 +2100,10 @@ export default function App() {
 
         if (b.hp <= 0 && b.alive) {
           b.alive = false;
+          spawnPhysicalLootDrop(sim, b.x, b.y, b.id === 'BOSS_MAIN');
           return;
         }
 
-        // Frozen or Staggered halts boss actions
         if (sim.isStaggered || b.debuffs.some((d) => d.type === 'Freeze')) return;
 
         const slowMod = b.debuffs.some((d) => d.type === 'Slow') ? 0.7 : 1.0;
@@ -1895,7 +2129,15 @@ export default function App() {
             targetHero.shield -= abs;
             dmg -= abs;
           }
-          targetHero.hp = Math.max(0, targetHero.hp - dmg);
+
+          // Frost Immortality (Seraphina Vale H19 Ultimate): HP cannot drop below 1!
+          if (targetHero.buffs.immortalTimer > 0 && targetHero.hp - dmg <= 0) {
+            targetHero.hp = 1;
+            spawnFloatingText('❄️ FROST IMMORTAL!', targetHero.x, targetHero.y - 18, '#38bdf8', 1.05);
+          } else {
+            targetHero.hp = Math.max(0, targetHero.hp - dmg);
+          }
+
           targetHero.hitFlash = 0.16;
           if (targetHero.animState === 'IDLE') {
             targetHero.animState = 'STAGGER_HIT';
@@ -1932,7 +2174,6 @@ export default function App() {
         const frontHeroes = aliveHeroes.filter((h) => h.stats.rowPosition === 'Front');
         const targetPool = frontHeroes.length > 0 ? frontHeroes : aliveHeroes;
 
-        // Basic Attack (every 2.5s)
         if (b.attackTimer <= 0) {
           b.attackTimer = 2.5;
           if (b.id === 'BOSS_MAIN') {
@@ -1946,12 +2187,10 @@ export default function App() {
             dealDamageToHero(byAtk[0], b.atk * 1.1 * berserkMult);
             if (sim.isBerserk && byAtk[1]) dealDamageToHero(byAtk[1], b.atk * 1.1 * berserkMult);
           } else {
-            // Void Minion or Arena Rival strike
             dealDamageToHero(targetPool[0], b.atk * 0.85 * berserkMult);
           }
         }
 
-        // Special Skill (every 8s / 10s / 12s)
         if (b.specialTimer <= 0) {
           if (b.id === 'BOSS_MAIN') {
             b.specialTimer = 8.0;
@@ -1985,7 +2224,7 @@ export default function App() {
         }
       });
 
-      // Stagger Check 4.0s Countdown for Cataclysmic Supernova (Module 6.3)
+      // Stagger Check 4.0s Countdown for Cataclysmic Supernova
       if (sim.staggerWarningTimer > 0 && !sim.isStaggered) {
         sim.staggerWarningTimer = Math.max(0, sim.staggerWarningTimer - dt);
         if (sim.staggerWarningTimer <= 0) {
@@ -1999,32 +2238,19 @@ export default function App() {
               if (h.hp <= 0) return;
               const effDef = h.stats.def * (1 + h.buffs.defPct / 100);
               const dmg = Math.round(mainCore.atk * 5.5 * berserkMult * (100 / (100 + effDef * 0.22)));
-              h.hp = Math.max(0, h.hp - dmg);
-              spawnFloatingText(`-${dmg}!`, h.x, h.y, '#ef4444', 1.3);
+              if (h.buffs.immortalTimer > 0) {
+                h.hp = 1;
+                spawnFloatingText('❄️ IMMORTAL!', h.x, h.y - 16, '#38bdf8', 1.15);
+              } else {
+                h.hp = Math.max(0, h.hp - dmg);
+                spawnFloatingText(`-${dmg}!`, h.x, h.y, '#ef4444', 1.3);
+              }
             });
           }
         }
       }
 
-      // Update Floating Texts, Particles & Shockwaves
-      sim.floatingTexts.forEach((ft) => {
-        ft.y += ft.vy * dt;
-        ft.life -= dt;
-      });
-      sim.floatingTexts = sim.floatingTexts.filter((ft) => ft.life > 0);
-
-      sim.particles.forEach((pt) => {
-        pt.x += pt.vx * dt;
-        pt.y += pt.vy * dt;
-        pt.life -= dt;
-        pt.alpha = pt.life / pt.maxLife;
-      });
-      sim.particles = sim.particles.filter((pt) => pt.life > 0);
-
-      sim.shockwaves.forEach((sw) => {
-        sw.life -= dt;
-      });
-      sim.shockwaves = sim.shockwaves.filter((sw) => sw.life > 0);
+      tickLootAndVfx(sim, dt);
 
       // Check Wave Victory (Spire vs 1v1 Async Arena)
       if (sim.mode === 'ARENA') {
@@ -2057,25 +2283,21 @@ export default function App() {
             return;
           }
 
-          const nextFl = sim.floor + 1;
+          // Start 2.8s WAVE_TRANSITION March (4.0x Parallax Scroll + Heroes RUN_DASH)
           const piscesStars = (constellations['PISCES'] || 0) + (constellations['AQUARIUS'] || 0);
           const shardMult = 1 + (piscesStars * 6) / 100;
           const earnedGold = Math.round((850 + sim.floor * 240) * shardMult);
           const earnedGems = sim.floor % 5 === 0 ? 160 : 40;
           setGold((g) => g + earnedGold);
           setStarlightGems((s) => s + earnedGems);
-          setFloor(nextFl);
-          setHighestFloor((hf) => Math.max(hf, nextFl));
-          pushLog(`Floor ${sim.floor} Cleared! +${earnedGold.toLocaleString()} Gold · +${earnedGems} Starlight.`);
-
-          // Every 5 floors: Open Roguelite Tarot Blessing Modal (Face-Down 3-Card Flip + 6s Auto-Card Timer)
-          if (sim.floor % 5 === 0) {
-            const shuffled = [...BLESSING_CARDS].sort(() => Math.random() - 0.5).slice(0, 3);
-            setTarotFlipped([false, false, false]);
-            setTarotAutoTimer(6.0);
-            setBlessingChoices(shuffled);
-          }
-          initFloorWave(nextFl, true, 'SPIRE');
+          pushLog(`Floor ${sim.floor} Cleared! +${earnedGold.toLocaleString()} Gold · +${earnedGems} Starlight — Marching to Floor F${sim.floor + 1}!`);
+          sim.waveTransitionTimer = 2.8;
+          sim.heroes.forEach((u) => {
+            if (u.hp > 0) {
+              u.animState = 'RUN_DASH';
+              u.animTimer = 2.8;
+            }
+          });
         }
       }
 
@@ -2145,7 +2367,9 @@ export default function App() {
             sim.maxSegmentBp,
             sim.shockwaves,
             sim.staggerWarningTimer,
-            sim.floor
+            sim.floor,
+            sim.waveTransitionTimer > 0 ? 4.0 : 1.0,
+            sim.lootDrops
           );
         }
       }
@@ -2157,6 +2381,7 @@ export default function App() {
         const sim = simRef.current;
         setHudState({
           waveElapsed: sim.waveElapsed,
+          waveTransitionTimer: sim.waveTransitionTimer,
           isBerserk: sim.isBerserk,
           staggerSegments: sim.staggerSegments,
           currentSegmentBp: sim.currentSegmentBp,
@@ -2195,7 +2420,7 @@ export default function App() {
     floor,
   ]);
 
-  // 6.0s Auto-Card Countdown for Every-5-Floor Tarot Pop-up (Auto-flips at <= 2.0s, selects Card #1 at 0.0s)
+  // 6.0s Auto-Card Countdown for Every-5-Floor Tarot Pop-up (Auto-flips at <= 2.0s, selects Card #1 at 0.0s for Next 5 Floors Only)
   useEffect(() => {
     if (!blessingChoices || blessingChoices.length === 0) return;
     const iv = setInterval(() => {
@@ -2206,7 +2431,7 @@ export default function App() {
         if (prev <= 0.2) {
           const card = blessingChoices[0];
           if (card) {
-            setBlessings((b) => ({ ...b, [card.id]: Math.min(3, (b[card.id] || 0) + 1) }));
+            setActiveTarotBlessing({ cardId: card.id, expiresAtFloor: floor + 4 });
           }
           setBlessingChoices(null);
           sfx.play('gacha');
@@ -2216,7 +2441,63 @@ export default function App() {
       });
     }, 200);
     return () => clearInterval(iv);
-  }, [blessingChoices]);
+  }, [blessingChoices, floor]);
+
+  // Hold-to-Flip 3D Card Charge Loop for Tarot Sanctuary & Gacha Reveal
+  useEffect(() => {
+    if (holdingTarotIdx === null && holdingGachaUid === null) return;
+    const iv = setInterval(() => {
+      if (holdingTarotIdx !== null) {
+        setTarotHoldProgress((prev) => {
+          const next: [number, number, number] = [prev[0], prev[1], prev[2]];
+          const cur = Math.min(100, next[holdingTarotIdx] + 16);
+          next[holdingTarotIdx] = cur;
+          if (cur >= 100) {
+            setTarotFlipped((fl) => {
+              const updated: [boolean, boolean, boolean] = [fl[0], fl[1], fl[2]];
+              updated[holdingTarotIdx] = true;
+              return updated;
+            });
+            setHoldingTarotIdx(null);
+            sfx.play('gacha');
+          }
+          return next;
+        });
+      }
+      if (holdingGachaUid !== null) {
+        setGachaHoldProgress((prev) => {
+          const cur = Math.min(100, (prev[holdingGachaUid] || 0) + 18);
+          if (cur >= 100) {
+            setGachaRevealCards((cards) =>
+              cards
+                ? cards.map((c) =>
+                    c.uid === holdingGachaUid
+                      ? { ...c, flipped: true, displayRarity: c.actualRarity, shattering: false }
+                      : c
+                  )
+                : null
+            );
+            setHoldingGachaUid(null);
+            sfx.play('gacha');
+          }
+          return { ...prev, [holdingGachaUid]: cur };
+        });
+      }
+    }, 55);
+    return () => clearInterval(iv);
+  }, [holdingTarotIdx, holdingGachaUid]);
+
+  // 1.4s Dungeon / Sanctuary Entry Banner Countdown
+  useEffect(() => {
+    if (!dungeonEntryBanner) return;
+    const iv = setInterval(() => {
+      setDungeonEntryBanner((prev) => {
+        if (!prev || prev.remaining <= 0.15) return null;
+        return { ...prev, remaining: Number((prev.remaining - 0.15).toFixed(2)) };
+      });
+    }, 150);
+    return () => clearInterval(iv);
+  }, [dungeonEntryBanner]);
 
   // Keyboard shortcuts for Title Screen & Pause
   useEffect(() => {
@@ -2234,7 +2515,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [shellState, showWiki]);
 
-  // Handle Canvas Click for Manual Tap-to-Focus (Module 2.2)
+  // Handle Canvas Click for Manual Tap-to-Focus
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -2270,16 +2551,21 @@ export default function App() {
     }));
   };
 
+  // 10-Star Character Shard Ascension (1★..5★ Gold -> A1★..A5★ / 6★..10★ Awakened; NEVER uses Starlight Gems!)
   const handleAscendStar = (heroId: string) => {
     const prog = heroProgress[heroId];
-    if (!prog || prog.stars >= 5) return;
-    const gemCost = (prog.stars - 1) * 400;
-    if (starlightGems < gemCost) return;
-    setStarlightGems((s) => s - gemCost);
+    if (!prog || prog.stars >= MAX_HERO_STARS) return;
+    const reqShards = getAscensionShardCost(prog.stars);
+    const curShards = heroShards[heroId] || 0;
+    if (curShards < reqShards) return;
+    setHeroShards((prev) => ({
+      ...prev,
+      [heroId]: Math.max(0, (prev[heroId] || 0) - reqShards),
+    }));
     sfx.play('gacha');
     setHeroProgress((prev) => ({
       ...prev,
-      [heroId]: { ...prev[heroId], stars: prev[heroId].stars + 1 },
+      [heroId]: { ...prev[heroId], stars: Math.min(MAX_HERO_STARS, prev[heroId].stars + 1) },
     }));
   };
 
@@ -2337,59 +2623,30 @@ export default function App() {
     }
   };
 
-  const handleForgeNewRelic = (set: SetId, slot: GearSlot) => {
-    const cost = 900;
-    if (gold < cost) return;
-    setGold((g) => g - cost);
+  const handleEquipGearToHero = (gear: GearItem, targetHeroId = selectedHeroId) => {
+    const targetHero = RESONATORS.find((r) => r.id === targetHeroId) || selectedHeroData;
+    if (!canHeroEquipGear(targetHero.role, gear)) {
+      const reqRole = getHeroAllowedWeaponRole(targetHero.role);
+      sfx.play('forge_fail');
+      setForgeFeedback({
+        text: `ROLE MISMATCH! ${targetHero.name} (${targetHero.role}) requires ${getWeaponRoleLabel(reqRole)} weapons!`,
+        success: false,
+      });
+      return;
+    }
     sfx.play('forge_ok');
-
-    const ringPool: StatKey[] = [
-      'CRIT RATE%',
-      'CRIT DMG%',
-      'ATK%',
-      'HP%',
-      'DEF%',
-      'EFFECT HIT RATE%',
-      'HEALING BONUS%',
-    ];
-    const sigilPool: StatKey[] = ['BREAK POWER%', 'ENERGY CHARGE%', 'EFFECT HIT RATE%', 'SPD'];
-    const mainKey: StatKey =
-      slot === 'Weapon'
-        ? 'ATK%'
-        : slot === 'Armor'
-        ? 'DEF%'
-        : slot === 'Ring I' || slot === 'Ring II'
-        ? ringPool[Math.floor(Math.random() * ringPool.length)]
-        : sigilPool[Math.floor(Math.random() * sigilPool.length)];
-
-    const setSpec = EQUIPMENT_SETS.find((s) => s.id === set);
-    const sigilTrait =
-      slot === 'Core Sigil'
-        ? SIGIL_CORE_TRAITS[Math.floor(Math.random() * SIGIL_CORE_TRAITS.length)]
-        : undefined;
-
-    const newGear: GearItem = {
-      id: `G_FORGED_${Date.now()}_${Math.floor(Math.random() * 999)}`,
-      name: `${setSpec?.displayName || set} ${slot}`,
-      slot,
-      set,
-      level: 0,
-      failStackCount: 0,
-      mainStatKey: mainKey,
-      baseMainValue: mainKey === 'CRIT DMG%' ? 16 : mainKey === 'SPD' ? 6 : 10,
-      baseFlatStat: slot === 'Weapon' ? 125 : slot === 'Armor' ? 880 : undefined,
-      substats: [],
-      sigilTrait,
-      equippedBy: selectedHeroId,
-    };
-
-    setGearInventory((prev) => {
-      const unequipped = prev.map((it) =>
-        it.equippedBy === selectedHeroId && it.slot === slot ? { ...it, equippedBy: undefined } : it
-      );
-      return [newGear, ...unequipped];
+    setGearInventory((prev) =>
+      prev.map((it) => {
+        if (it.id === gear.id) return { ...it, equippedBy: targetHeroId };
+        if (it.equippedBy === targetHeroId && it.slot === gear.slot) return { ...it, equippedBy: undefined };
+        return it;
+      })
+    );
+    setSelectedGearId(gear.id);
+    setForgeFeedback({
+      text: `Equipped ${gear.name} (+${gear.level}) on ${targetHero.name}!`,
+      success: true,
     });
-    setSelectedGearId(newGear.id);
   };
 
   const DOMAIN_TIER_SPECS: Record<
@@ -2526,12 +2783,20 @@ export default function App() {
         ? SIGIL_CORE_TRAITS[Math.floor(Math.random() * SIGIL_CORE_TRAITS.length)]
         : undefined;
 
+    const targetHero = RESONATORS.find((r) => r.id === selectedHeroId) || RESONATORS[0];
+    const weaponRole: WeaponRole | undefined =
+      pickedSlot === 'Weapon' ? getHeroAllowedWeaponRole(targetHero.role) : undefined;
+    const wepSuffix =
+      weaponRole === 'MELEE' ? 'Blade' : weaponRole === 'RANGED' ? 'Bow' : weaponRole === 'MAGIC' ? 'Staff' : pickedSlot;
+
     const starPrefix = isFiveStar ? '5★ ' : tier >= 2 ? '4★ ' : '3★ ';
     const lootedGear: GearItem = {
       id: `G_DOMAIN_${Date.now()}_${Math.floor(Math.random() * 999)}`,
-      name: `${starPrefix}${sigilTrait ? 'Exotic ' : ''}${setSpec?.displayName || pickedSet} ${pickedSlot}`,
+      name: `${starPrefix}${sigilTrait ? 'Exotic ' : ''}${setSpec?.displayName || pickedSet} ${wepSuffix}`,
       slot: pickedSlot,
       set: pickedSet,
+      weaponRole,
+      iconUrl: getGearIconUrl(pickedSet, pickedSlot, weaponRole, sigilTrait?.id),
       level: spec.baseGearLv + (isFiveStar ? 1 : 0),
       failStackCount: 0,
       mainStatKey: mainKey,
@@ -2572,6 +2837,11 @@ export default function App() {
     setActiveDomainChallenge(challenge);
     activeDomainChallengeRef.current = challenge;
     setBattleSubMode('SPIRE');
+    setDungeonEntryBanner({
+      title: `ENTERING ${domainId} SANCTUARY`,
+      subtitle: `${spec.roman} (${spec.name}) · Guardian Encounter`,
+      remaining: 1.4,
+    });
     initFloorWave(spec.bossFloor, false, 'SPIRE');
     pushLog(`ENTERED ${domainId} ${spec.roman} (${spec.name}) BOSS CHALLENGE! Defeat the Guardian to unlock Sweep!`);
   };
@@ -2606,6 +2876,7 @@ export default function App() {
       name: `Exotic Voidweaver Core Sigil`,
       slot: 'Core Sigil',
       set: 'Voidweaver',
+      iconUrl: getGearIconUrl('Voidweaver', 'Core Sigil', undefined, trait.id),
       level: 6,
       failStackCount: 0,
       mainStatKey: 'EFFECT HIT RATE%',
@@ -2642,6 +2913,7 @@ export default function App() {
     const bonusRelics: GearItem[] = [];
     let curPity = gachaPity;
     const updatedProg = { ...heroProgress };
+    const updatedShards = { ...heroShards };
 
     const ssrPool = RESONATORS.filter((r) => r.rarity === 'SSR');
     const srPool = RESONATORS.filter((r) => r.rarity === 'SR');
@@ -2657,13 +2929,15 @@ export default function App() {
             : srPool[Math.floor(Math.random() * srPool.length)];
         const p = updatedProg[pickSr.id];
         const wasLocked = !p.unlocked;
-        updatedProg[pickSr.id] = {
-          ...p,
-          unlocked: true,
-          stars: wasLocked ? 2 : Math.min(5, p.stars + 1),
-          level: wasLocked ? p.level : Math.min(100, p.level + 3),
-        };
-        const noteText = wasLocked ? 'NEW SR UNLOCKED! (Tutorial 100% SR)' : `Promoted to ${updatedProg[pickSr.id].stars}★!`;
+        let noteText = '';
+        if (wasLocked) {
+          updatedProg[pickSr.id] = { ...p, unlocked: true, stars: 2 };
+          noteText = 'NEW SR UNLOCKED! (Tutorial 100% SR)';
+        } else {
+          const dupShards = getDuplicatePullShardAmount('SR');
+          updatedShards[pickSr.id] = (updatedShards[pickSr.id] || 0) + dupShards;
+          noteText = `Duplicate SR · +${dupShards} ${pickSr.name} Shards!`;
+        }
         results.push({ name: pickSr.name, rarity: 'SR', note: noteText });
         revealCards.push({
           uid: `PULL_${Date.now()}_${i}`,
@@ -2703,16 +2977,13 @@ export default function App() {
         if (wasLocked) {
           updatedProg[picked.id] = { ...p, unlocked: true, stars: 3 };
           noteText = 'NEW SSR SOVEREIGN UNLOCKED!';
-        } else if (p.stars < 5) {
-          updatedProg[picked.id] = { ...p, stars: p.stars + 1 };
-          noteText = `Promoted to ${p.stars + 1}★!`;
         } else {
-          updatedProg[picked.id] = { ...p, level: Math.min(100, p.level + 5) };
-          noteText = 'Max 5★ Resonance (+5 Lv)';
+          const dupShards = getDuplicatePullShardAmount('SSR');
+          updatedShards[picked.id] = (updatedShards[picked.id] || 0) + dupShards;
+          noteText = `Duplicate SSR · +${dupShards} ${picked.name} Shards!`;
         }
         results.push({ name: picked.name, rarity: 'SSR', note: noteText });
 
-        // 25% Fake-Out Shatter Chance (SR Purple Aura -> Shatters into Gold SSR!)
         const isFakeOut = Math.random() < 0.25;
         revealCards.push({
           uid: `PULL_${Date.now()}_${i}`,
@@ -2732,12 +3003,10 @@ export default function App() {
         if (wasLocked) {
           updatedProg[picked.id] = { ...p, unlocked: true, stars: 2 };
           noteText = 'NEW SR RESONATOR UNLOCKED!';
-        } else if (p.stars < 5) {
-          updatedProg[picked.id] = { ...p, stars: p.stars + 1, level: Math.min(100, p.level + 2) };
-          noteText = `Promoted to ${p.stars + 1}★ (+2 Lv)!`;
         } else {
-          updatedProg[picked.id] = { ...p, level: Math.min(100, p.level + 4) };
-          noteText = '+4 Resonator Lv & +1 Starfall Shard';
+          const dupShards = getDuplicatePullShardAmount('SR');
+          updatedShards[picked.id] = (updatedShards[picked.id] || 0) + dupShards;
+          noteText = `Duplicate SR · +${dupShards} ${picked.name} Shards!`;
         }
         results.push({ name: picked.name, rarity: 'SR', note: noteText });
         revealCards.push({
@@ -2751,26 +3020,30 @@ export default function App() {
           note: noteText,
         });
       } else {
-        // Normal Roll: Drops an R Resonator Card (upgrades R stars/levels) + a 3★–4★ Relic
+        // Normal Roll: Duplicate R grants +15 Hero Shards + a 3★–4★ Role-Matched Relic
         const pickedR = rPool[Math.floor(Math.random() * rPool.length)] || RESONATORS[RESONATORS.length - 1];
         const p = updatedProg[pickedR.id];
-        const nextStars = p.stars < 5 ? p.stars + 1 : p.stars;
-        updatedProg[pickedR.id] = {
-          ...p,
-          unlocked: true,
-          stars: nextStars,
-          level: Math.min(100, p.level + 2),
-        };
+        const dupShards = getDuplicatePullShardAmount('R');
+        updatedProg[pickedR.id] = { ...p, unlocked: true };
+        updatedShards[pickedR.id] = (updatedShards[pickedR.id] || 0) + dupShards;
+
         const randSet = EQUIPMENT_SETS[Math.floor(Math.random() * EQUIPMENT_SETS.length)];
         const slots: GearSlot[] = ['Weapon', 'Armor', 'Ring I', 'Ring II'];
         const randSlot = slots[Math.floor(Math.random() * slots.length)];
+        const roles: WeaponRole[] = ['MELEE', 'RANGED', 'MAGIC'];
+        const wRole: WeaponRole | undefined =
+          randSlot === 'Weapon' ? roles[Math.floor(Math.random() * roles.length)] : undefined;
+        const wepLabel =
+          wRole === 'MELEE' ? 'Blade' : wRole === 'RANGED' ? 'Bow' : wRole === 'MAGIC' ? 'Staff' : randSlot;
         const isFourStar = Math.random() < 0.45;
-        const relicName = `${isFourStar ? '4★' : '3★'} ${randSet.displayName} ${randSlot}`;
+        const relicName = `${isFourStar ? '4★' : '3★'} ${randSet.displayName} ${wepLabel}`;
         bonusRelics.push({
           id: `G_PULL_${Date.now()}_${i}_${Math.floor(Math.random() * 999)}`,
           name: relicName,
           slot: randSlot,
           set: randSet.id,
+          weaponRole: wRole,
+          iconUrl: getGearIconUrl(randSet.id, randSlot, wRole),
           level: isFourStar ? 1 : 0,
           failStackCount: 0,
           mainStatKey: randSlot === 'Weapon' ? 'ATK%' : randSlot === 'Armor' ? 'DEF%' : 'CRIT RATE%',
@@ -2778,7 +3051,7 @@ export default function App() {
           baseFlatStat: randSlot === 'Weapon' ? 125 : randSlot === 'Armor' ? 880 : undefined,
           substats: [{ stat: 'ATK%', value: 4 }],
         });
-        const noteText = `${p.stars < 5 ? `Promoted to ${nextStars}★` : '+2 Lv'} · +${relicName}`;
+        const noteText = `+${dupShards} ${pickedR.name} Shards · +${relicName}`;
         results.push({
           name: pickedR.name,
           rarity: 'R',
@@ -2804,6 +3077,9 @@ export default function App() {
     setGold((g) => g + count * 500);
     setGachaPity(curPity);
     setHeroProgress(updatedProg);
+    setHeroShards(updatedShards);
+    setGachaHoldProgress({});
+    setHoldingGachaUid(null);
     setRecentPulls(results);
     setGachaRevealCards(revealCards);
   };
@@ -2814,7 +3090,7 @@ export default function App() {
     const earned = Math.max(25, Math.round(floor * 28 * shardMult));
     setTimeShards((t) => t + earned);
     setFloor(1);
-    setBlessings({ ARCANA_19: 1 });
+    setActiveTarotBlessing({ cardId: 'ARCANA_19', expiresAtFloor: 5 });
     sfx.play('stagger');
     setBattleSubMode('SPIRE');
     initFloorWave(1, false, 'SPIRE');
@@ -2843,7 +3119,7 @@ export default function App() {
 
         {/* Top Bar Info */}
         <div className="relative z-10 flex items-center justify-between text-xs text-slate-400">
-          <span>Chrono Spire: Starfall Protocol · Master Blueprint Build v2.1</span>
+          <span>Chrono Spire: Starfall Protocol · Master Blueprint Build v2.3</span>
         </div>
 
         {/* Center Bespoke SVG Title Lockup & Hero Centerpiece */}
@@ -2932,33 +3208,46 @@ export default function App() {
           </span>
           <button
             onClick={() => setSanctuariesModalOpen(true)}
-            className="ml-1 px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/70 text-amber-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm"
+            className="ml-1 px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/70 text-amber-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm inline-flex items-center gap-1.5"
           >
-            [🏰 Sanctuaries &amp; Challenges]
+            <img src={UI_ICONS.nav.sanctuary} alt="" className="w-4 h-4 object-contain pixelated" />
+            <span>[Sanctuaries &amp; Challenges]</span>
           </button>
           <button
             onClick={() => setMerchantHubOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/70 text-rose-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm"
+            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/70 text-rose-200 font-bold text-[11px] cursor-pointer whitespace-nowrap shadow-sm inline-flex items-center gap-1.5"
           >
-            [🛒 Merchant Hub]
+            <img src={UI_ICONS.nav.shop} alt="" className="w-4 h-4 object-contain pixelated" />
+            <span>[Merchant Hub]</span>
+          </button>
+          <button
+            onClick={() => setShowWiki(true)}
+            className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold text-[11px] cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
+          >
+            <img src={UI_ICONS.nav.wiki} alt="" className="w-3.5 h-3.5 object-contain pixelated" />
+            <span>Wiki</span>
           </button>
         </div>
 
         <div className="flex items-center gap-2.5">
-          <span>
-            Gold: <strong className="text-amber-300">{gold.toLocaleString()}</strong>
+          <span className="inline-flex items-center gap-1">
+            <img src={UI_ICONS.currency.gold} alt="Gold" className="w-4 h-4 object-contain pixelated" />
+            <strong className="text-amber-300">{gold.toLocaleString()}</strong>
           </span>
           <span aria-hidden="true">·</span>
-          <span>
-            Starlight: <strong className="text-sky-300">{starlightGems.toLocaleString()}</strong>
+          <span className="inline-flex items-center gap-1">
+            <img src={UI_ICONS.currency.starlightGem} alt="Starlight" className="w-4 h-4 object-contain pixelated" />
+            <strong className="text-sky-300">{starlightGems.toLocaleString()}</strong>
           </span>
           <span aria-hidden="true">·</span>
-          <span>
-            Shards: <strong className="text-rose-300">{starfallShards}</strong>
+          <span className="inline-flex items-center gap-1">
+            <img src={UI_ICONS.currency.starfallShard} alt="Shards" className="w-4 h-4 object-contain pixelated" />
+            <strong className="text-rose-300">{starfallShards}</strong>
           </span>
           <span aria-hidden="true">·</span>
-          <span>
-            Time: <strong className="text-purple-300">{timeShards.toLocaleString()}</strong>
+          <span className="inline-flex items-center gap-1">
+            <img src={UI_ICONS.currency.timeShard} alt="Time" className="w-4 h-4 object-contain pixelated" />
+            <strong className="text-purple-300">{timeShards.toLocaleString()}</strong>
           </span>
           <span aria-hidden="true">·</span>
           <button
@@ -3047,24 +3336,30 @@ export default function App() {
                 onClick={() => setSanctuariesModalOpen(true)}
                 className="py-1.5 px-2.5 rounded-xl border border-amber-400/70 bg-[#0a0d18]/90 hover:bg-amber-500/20 text-amber-300 backdrop-blur-sm flex flex-col items-center justify-center gap-0.5 shadow-xl cursor-pointer"
               >
-                <span className="text-sm leading-none">🏰</span>
+                <img src={UI_ICONS.nav.sanctuary} alt="" className="w-5 h-5 object-contain pixelated" />
                 <span className="text-[10px] font-display font-bold tracking-tight whitespace-nowrap">
                   Sanctuaries
                 </span>
-                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap">
-                  {weeklyKeys}/15🗝️ · {guildAttempts}/3🐉
+                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap inline-flex items-center gap-1">
+                  <img src={UI_ICONS.currency.weeklyKey} alt="" className="w-3 h-3 object-contain pixelated" />
+                  {weeklyKeys}/15 · {guildAttempts}/3🐉
                 </span>
               </button>
               <button
                 onClick={() => setMerchantHubOpen(true)}
                 className="py-1.5 px-2.5 rounded-xl border border-rose-400/70 bg-[#0a0d18]/90 hover:bg-rose-500/20 text-rose-200 backdrop-blur-sm flex flex-col items-center justify-center gap-0.5 shadow-xl cursor-pointer"
               >
-                <span className="text-sm leading-none">🛒</span>
+                <img src={UI_ICONS.nav.shop} alt="" className="w-5 h-5 object-contain pixelated" />
                 <span className="text-[10px] font-display font-bold tracking-tight whitespace-nowrap">
                   Merchant Hub
                 </span>
-                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap">
-                  {starfallShards}🌟 · {arenaTokens}🏆 · {guildMedals}🎖️
+                <span className="text-[8px] font-mono text-slate-300 tabular-nums whitespace-nowrap inline-flex items-center gap-1">
+                  <img src={UI_ICONS.currency.starfallShard} alt="" className="w-3 h-3 object-contain pixelated" />
+                  {starfallShards} ·
+                  <img src={UI_ICONS.currency.arenaToken} alt="" className="w-3 h-3 object-contain pixelated" />
+                  {arenaTokens} ·
+                  <img src={UI_ICONS.currency.guildMedal} alt="" className="w-3 h-3 object-contain pixelated" />
+                  {guildMedals}
                 </span>
               </button>
             </div>
@@ -3526,6 +3821,19 @@ export default function App() {
                         }
                         compact
                       />
+                      {activeTarotBlessing && floor <= activeTarotBlessing.expiresAtFloor && (() => {
+                        const tarotCard = BLESSING_CARDS.find((c) => c.id === activeTarotBlessing.cardId);
+                        if (!tarotCard) return null;
+                        return (
+                          <div
+                            title={`${tarotCard.name}: ${tarotCard.desc} (Single-Tier · Non-stacking · Expires after Floor F${activeTarotBlessing.expiresAtFloor})`}
+                            className="px-2 py-0.5 rounded-lg bg-purple-950/90 border border-purple-400/60 text-[10px] font-mono font-bold text-purple-200 inline-flex items-center gap-1.5 shadow"
+                          >
+                            <img src={tarotCard.artUrl} alt="" className="w-3.5 h-5 object-cover rounded-xs" />
+                            <span>🃏 {tarotCard.name} (F{floor}/{activeTarotBlessing.expiresAtFloor})</span>
+                          </div>
+                        );
+                      })()}
                       {activeDomainChallenge && (
                         <div className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-400/70 text-[11px] font-mono font-bold text-rose-200">
                           🏰 {activeDomainChallenge.domainId} · Tier {activeDomainChallenge.tier} Boss
@@ -3534,6 +3842,29 @@ export default function App() {
                     </div>
                   );
                 })()}
+
+                {/* 2.8s WAVE MARCH TRANSITION BANNER */}
+                {hudState.waveTransitionTimer > 0 && (
+                  <div className="pointer-events-none absolute top-24 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-xl bg-slate-950/90 border-2 border-amber-400/80 shadow-[0_0_25px_rgba(251,191,36,0.45)] flex items-center gap-2.5 animate-pulse">
+                    <span className="text-xs font-mono font-extrabold text-amber-300 tracking-widest uppercase">
+                      ⚡ VANGUARD MARCH · ADVANCING TO FLOOR F{floor + 1} ({hudState.waveTransitionTimer.toFixed(1)}s)
+                    </span>
+                  </div>
+                )}
+
+                {/* 1.4s DUNGEON / CHALLENGE ENTRY TRANSITION OVERLAY */}
+                {dungeonEntryBanner && (
+                  <div className="pointer-events-none absolute inset-0 z-40 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center">
+                    <div className="px-8 py-5 rounded-2xl bg-[#090d1a] border-2 border-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.5)] text-center space-y-1.5">
+                      <div className="text-[11px] font-mono font-bold text-amber-300 uppercase tracking-widest">
+                        {dungeonEntryBanner.subtitle}
+                      </div>
+                      <div className="text-2xl font-extrabold text-white font-display tracking-wider">
+                        {dungeonEntryBanner.title}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* COMPACT CENTERED TOP BOSS HUD BAR (Name + Element & Counter + HP + Stagger + SVG Debuff Badges) */}
                 {(() => {
@@ -3892,11 +4223,9 @@ export default function App() {
                         {isDead ? 'KO' : isUltReady ? 'ULT!' : `${Math.floor(enPct)}%`}
                       </span>
 
-                      {/* 5. BOTTOM STARS ROW INSIDE ICON (Does not cover character's face) */}
+                      {/* 5. BOTTOM STARS ROW INSIDE ICON (Gold 1★..5★ / Awakened A1★..A5★) */}
                       <div className="absolute inset-x-0 bottom-1 z-20 flex items-center justify-center pointer-events-none">
-                        <span className="text-[9px] leading-none tracking-tighter text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
-                          {'★'.repeat(u.prog.stars)}
-                        </span>
+                        <HeroStarBar stars={u.prog.stars} sizeClass="w-2.5 h-2.5" />
                       </div>
                     </button>
                   );
@@ -3919,14 +4248,14 @@ export default function App() {
                   <div className="flex items-center justify-between mb-2.5 shrink-0">
                     <div>
                       <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                        Resonator Roster · 23 Heroes (12 SSR · 6 SR · 5 Starter R)
+                        Resonator Roster · 27 Heroes (15 SSR · 7 SR · 5 Starter R)
                       </h2>
                       <p className="text-[11px] text-slate-400">
-                        Hold &amp; Drag any unlocked card to deploy/swap in Formation · Click to inspect Details &amp; Gambits
+                        Hold &amp; Drag any unlocked card to deploy/swap in Formation · Click to inspect Details, Shards &amp; Gambits
                       </p>
                     </div>
                     <span className="text-xs font-mono text-amber-300">
-                      Unlocked: {RESONATORS.filter((r) => heroProgress[r.id]?.unlocked).length}/23 · Deployed: {partyIds.length}/5
+                      Unlocked: {RESONATORS.filter((r) => heroProgress[r.id]?.unlocked).length}/27 · Deployed: {partyIds.length}/5
                     </span>
                   </div>
 
@@ -3939,22 +4268,9 @@ export default function App() {
                         const partySlotIdx = partyIds.indexOf(r.id);
                         const isBeingDragged = draggingHero?.heroId === r.id;
                         const elMeta = ELEMENT_META[r.element];
-                        const rarityMeta = RARITY_BADGE_META[r.rarity] || RARITY_BADGE_META.N;
-                        const elIconMap: Record<string, string> = {
-                          Fire: '🔥',
-                          Cryo: '❄️',
-                          Electro: '⚡',
-                          Wind: '🌪️',
-                          Light: '☀️',
-                          Dark: '🌑',
-                        };
-                        const roleIconMap: Record<string, string> = {
-                          'Melee DPS': '⚔️',
-                          'Ranged DPS': '🏹',
-                          'Tank / Breaker': '🛡️',
-                          Debuffer: '✨',
-                          'Support & Healer': '💚',
-                        };
+                        const curShards = heroShards[r.id] || 0;
+                        const reqShards = getAscensionShardCost(p.stars);
+                        const rarityIconUrl = UI_ICONS.rarity[(r.rarity === 'N' ? 'R' : r.rarity) as 'R' | 'SR' | 'SSR'];
 
                         return (
                           <div
@@ -3996,33 +4312,39 @@ export default function App() {
                               />
                             </div>
 
-                            {/* TOP-LEFT: RARITY BADGE (SSR/SR/R/N) + ELEMENT & ROLE CIRCLES */}
+                            {/* TOP-LEFT: RARITY BADGE (.webp) + ELEMENT (.webp) & ROLE (.webp) */}
                             <div className="absolute top-2 left-2 z-20 flex flex-col items-start gap-1">
-                              <span
-                                className={`px-1.5 py-0.5 rounded border text-[9px] font-mono font-extrabold leading-none tracking-wider shadow-md ${rarityMeta.bgClass} ${rarityMeta.textClass} ${rarityMeta.borderClass}`}
-                              >
-                                {rarityMeta.label}
-                              </span>
+                              <img
+                                src={rarityIconUrl}
+                                alt={r.rarity}
+                                className="h-4 w-auto object-contain pixelated drop-shadow"
+                              />
                               <div
                                 title={`Element: ${r.element}`}
                                 style={{ borderColor: elMeta.color }}
-                                className="w-6 h-6 rounded-full bg-slate-950/90 border flex items-center justify-center text-[11px] shadow-md"
+                                className="w-6 h-6 rounded-full bg-slate-950/90 border flex items-center justify-center shadow-md p-0.5"
                               >
-                                {elIconMap[r.element] || '✦'}
+                                <img
+                                  src={UI_ICONS.elem[r.element]}
+                                  alt={r.element}
+                                  className="w-4 h-4 object-contain pixelated"
+                                />
                               </div>
                               <div
                                 title={`Role: ${r.role}`}
-                                className="w-6 h-6 rounded-full bg-slate-950/90 border border-slate-600 flex items-center justify-center text-[10px] shadow-md"
+                                className="w-6 h-6 rounded-full bg-slate-950/90 border border-slate-600 flex items-center justify-center shadow-md p-0.5"
                               >
-                                {roleIconMap[r.role] || '⚔️'}
+                                <img
+                                  src={UI_ICONS.role[r.role]}
+                                  alt={r.role}
+                                  className="w-4 h-4 object-contain pixelated"
+                                />
                               </div>
                             </div>
 
-                            {/* TOP-CENTER: GOLDEN STARS ROW (1★ to 5★) */}
+                            {/* TOP-CENTER: 5 GOLD STARS -> 5 AWAKENED RED STARS ROW */}
                             <div className="absolute top-2 inset-x-0 z-20 flex items-center justify-center pointer-events-none">
-                              <span className="text-xs font-mono text-amber-300 tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)]">
-                                {'★'.repeat(p.stars)}
-                              </span>
+                              <HeroStarBar stars={p.stars} sizeClass="w-3 h-3" />
                             </div>
 
                             {/* TOP-RIGHT: QUICK DEPLOY OR LOCKED BADGE */}
@@ -4076,6 +4398,9 @@ export default function App() {
                               <div className="w-full flex items-center justify-between -mb-0.5">
                                 <span className="text-[10px] font-mono font-extrabold text-amber-300 drop-shadow">
                                   ⚡ CP {(heroCpMap[r.id] || 0).toLocaleString()}
+                                </span>
+                                <span className="text-[9px] font-mono font-extrabold text-sky-300 drop-shadow">
+                                  🧩 {curShards}/{reqShards || 'MAX'}
                                 </span>
                                 <span className="text-[10px] font-mono font-extrabold text-white drop-shadow">
                                   {isUnlocked ? `LV ${p.level}` : 'LOCKED'}
@@ -4418,14 +4743,17 @@ export default function App() {
                         </button>
                         <button
                           disabled={
-                            selectedHeroProg.stars >= 5 || starlightGems < Math.max(1, selectedHeroProg.stars) * 400
+                            selectedHeroProg.stars >= MAX_HERO_STARS ||
+                            (heroShards[selectedHeroData.id] || 0) < getAscensionShardCost(selectedHeroProg.stars)
                           }
                           onClick={() => handleAscendStar(selectedHeroData.id)}
                           className="px-3.5 py-1.5 bg-sky-400 hover:bg-sky-300 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-lg cursor-pointer"
                         >
-                          {selectedHeroProg.stars >= 5
-                            ? '5★ MAX'
-                            : `Ascend ${selectedHeroProg.stars + 1}★ (${Math.max(1, selectedHeroProg.stars) * 400} Gems)`}
+                          {selectedHeroProg.stars >= MAX_HERO_STARS
+                            ? '★ A5★ (10★) MAX'
+                            : selectedHeroProg.stars >= 5
+                            ? `🔥 Awaken A${selectedHeroProg.stars - 4}★ (${heroShards[selectedHeroData.id] || 0}/${getAscensionShardCost(selectedHeroProg.stars)} Shards)`
+                            : `⭐ Ascend ${selectedHeroProg.stars + 1}★ (${heroShards[selectedHeroData.id] || 0}/${getAscensionShardCost(selectedHeroProg.stars)} Shards)`}
                         </button>
                       </>
                     )}
@@ -4435,14 +4763,36 @@ export default function App() {
                 <div className="flex-1 min-h-0 grid grid-cols-12 gap-4 overflow-hidden">
                   {/* LEFT (4 Cols): Full-Body Character Art + 2D Sprite Inset */}
                   <div className="col-span-12 lg:col-span-4 bg-[#0a0d18] border border-slate-800 rounded-xl p-3 relative flex flex-col justify-between overflow-hidden">
-                    <div className="absolute top-3 left-3 z-10 pointer-events-none bg-slate-950/75 px-2.5 py-1 rounded-lg border border-slate-800/80">
-                      <div className="text-[10px] text-amber-300 font-mono">
-                        {selectedHeroData.rarity} · {selectedHeroData.element} · {selectedHeroData.role}
+                    <div className="absolute top-3 left-3 z-10 pointer-events-none bg-slate-950/75 px-2.5 py-1.5 rounded-lg border border-slate-800/80 space-y-1">
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-300 font-mono">
+                        <img
+                          src={UI_ICONS.rarity[(selectedHeroData.rarity === 'N' ? 'R' : selectedHeroData.rarity) as 'R' | 'SR' | 'SSR']}
+                          alt={selectedHeroData.rarity}
+                          className="h-3.5 w-auto object-contain pixelated"
+                        />
+                        <img
+                          src={UI_ICONS.elem[selectedHeroData.element]}
+                          alt={selectedHeroData.element}
+                          className="w-3.5 h-3.5 object-contain pixelated"
+                        />
+                        <span>{selectedHeroData.element}</span>
+                        <span>·</span>
+                        <img
+                          src={UI_ICONS.role[selectedHeroData.role]}
+                          alt={selectedHeroData.role}
+                          className="w-3.5 h-3.5 object-contain pixelated"
+                        />
+                        <span>{selectedHeroData.role}</span>
                       </div>
                       <h2 className="text-lg font-bold text-white font-display leading-tight">
                         {selectedHeroData.name}
                       </h2>
-                      <p className="text-[10px] text-slate-400">{selectedHeroData.title}</p>
+                      <div className="flex items-center gap-2">
+                        <HeroStarBar stars={selectedHeroProg.stars} sizeClass="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-mono text-amber-200">
+                          {formatHeroStarLabel(selectedHeroProg.stars)} · 🧩 {heroShards[selectedHeroData.id] || 0} Shards
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex-1 min-h-0 w-full h-full flex items-center justify-center p-1">
@@ -4462,7 +4812,7 @@ export default function App() {
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider">
-                          Attributes (Lv.{selectedHeroProg.level} · {selectedHeroProg.stars}★)
+                          Attributes (Lv.{selectedHeroProg.level} · {formatHeroStarLabel(selectedHeroProg.stars)})
                         </h3>
                         <div className="flex items-center gap-1.5 font-mono text-xs">
                           <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/50 text-amber-300 font-bold">
@@ -4697,37 +5047,70 @@ export default function App() {
                     );
                     const isSelected = item && selectedGearId === item.id;
                     const mainVals = item ? getGearMainStatValue(item) : null;
-                    const icon = slot === 'Weapon' ? '⚔️' : '🛡️';
+                    const allowedWepRole = getHeroAllowedWeaponRole(selectedHeroData.role);
+                    const wepRoleBadgeUrl =
+                      slot === 'Weapon'
+                        ? getWeaponRoleBadgeIconUrl(item?.weaponRole || allowedWepRole)
+                        : null;
 
                     return (
                       <div
                         key={slot}
                         onClick={() => item && setSelectedGearId(item.id)}
-                        className={`h-24 p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer ${
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedGear && draggedGear.item.slot === slot) {
+                            handleEquipGearToHero(draggedGear.item, selectedHeroId);
+                            setDraggedGear(null);
+                          }
+                        }}
+                        className={`relative h-24 p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-slate-900 border-amber-400 shadow-md shadow-amber-500/15'
                             : 'bg-slate-950/90 border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono text-slate-300">
-                            {icon} {slot}
+                          <span className="text-xs font-mono text-slate-300 inline-flex items-center gap-1.5">
+                            {wepRoleBadgeUrl && (
+                              <img
+                                src={wepRoleBadgeUrl}
+                                alt=""
+                                title={`Weapon Role: ${item?.weaponRole || allowedWepRole}`}
+                                className="w-4 h-4 object-contain pixelated"
+                              />
+                            )}
+                            <span>{slot}</span>
                           </span>
                           <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/50 text-amber-300 font-mono font-bold text-[10px]">
                             +{item ? item.level : 0}
                           </span>
                         </div>
-                        <div className="text-xs font-bold text-white truncate">
-                          {item ? item.name : `Empty ${slot}`}
-                        </div>
-                        {item && mainVals ? (
-                          <div className="text-[10px] font-mono text-emerald-400 truncate">
-                            {item.mainStatKey} +{mainVals.pct}%
-                            {mainVals.flat ? ` (+${mainVals.flat})` : ''}
+                        <div className="flex items-center gap-2 min-w-0">
+                          {item && (
+                            <img
+                              src={getGearItemIconUrl(item)}
+                              alt={item.name}
+                              className="w-7 h-7 object-contain pixelated shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item ? item.name : `Empty ${slot}`}
+                            </div>
+                            {item && mainVals ? (
+                              <div className="text-[10px] font-mono text-emerald-400 truncate">
+                                {item.mainStatKey} +{mainVals.pct}%
+                                {mainVals.flat ? ` (+${mainVals.flat})` : ''}
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-mono text-slate-500 truncate">
+                                Drop {slot} Here
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-[10px] font-mono text-slate-500 truncate">No Relic Equipped</div>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
@@ -4751,6 +5134,14 @@ export default function App() {
                     return (
                       <div
                         onClick={() => item && setSelectedGearId(item.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedGear && draggedGear.item.slot === slot) {
+                            handleEquipGearToHero(draggedGear.item, selectedHeroId);
+                            setDraggedGear(null);
+                          }
+                        }}
                         className={`w-full max-w-[250px] p-2.5 rounded-xl border transition-all cursor-pointer z-10 ${
                           isSelected
                             ? 'bg-slate-900 border-amber-400 shadow-md shadow-amber-500/20'
@@ -4765,20 +5156,31 @@ export default function App() {
                             +{item ? item.level : 0}
                           </span>
                         </div>
-                        <div className="text-xs font-bold text-white truncate mt-0.5">
-                          {item ? item.name : 'Empty Core Sigil'}
-                        </div>
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
-                          {item && mainVals && (
-                            <span className="text-[10px] font-mono text-emerald-400 shrink-0">
-                              {item.mainStatKey} +{mainVals.pct}%
-                            </span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {item && (
+                            <img
+                              src={getGearItemIconUrl(item)}
+                              alt={item.name}
+                              className="w-7 h-7 object-contain pixelated shrink-0"
+                            />
                           )}
-                          {item?.sigilTrait && (
-                            <span className="text-[9px] font-mono text-purple-300 truncate">
-                              ★ {item.sigilTrait.name}
-                            </span>
-                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item ? item.name : 'Empty Core Sigil'}
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              {item && mainVals && (
+                                <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                                  {item.mainStatKey} +{mainVals.pct}%
+                                </span>
+                              )}
+                              {item?.sigilTrait && (
+                                <span className="text-[9px] font-mono text-purple-300 truncate">
+                                  ★ {item.sigilTrait.name}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -4798,6 +5200,14 @@ export default function App() {
                       <div
                         key={slot}
                         onClick={() => item && setSelectedGearId(item.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedGear && draggedGear.item.slot === slot) {
+                            handleEquipGearToHero(draggedGear.item, selectedHeroId);
+                            setDraggedGear(null);
+                          }
+                        }}
                         className={`h-24 p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-slate-900 border-amber-400 shadow-md shadow-amber-500/15'
@@ -4812,42 +5222,210 @@ export default function App() {
                             +{item ? item.level : 0}
                           </span>
                         </div>
-                        <div className="text-xs font-bold text-white truncate">
-                          {item ? item.name : `Empty ${slot}`}
-                        </div>
-                        {item && mainVals ? (
-                          <div className="text-[10px] font-mono text-emerald-400 truncate">
-                            {item.mainStatKey} +{mainVals.pct}%
+                        <div className="flex items-center gap-2 min-w-0">
+                          {item && (
+                            <img
+                              src={getGearItemIconUrl(item)}
+                              alt={item.name}
+                              className="w-7 h-7 object-contain pixelated shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item ? item.name : `Empty ${slot}`}
+                            </div>
+                            {item && mainVals ? (
+                              <div className="text-[10px] font-mono text-emerald-400 truncate">
+                                {item.mainStatKey} +{mainVals.pct}%
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-mono text-slate-500 truncate">
+                                Drop {slot} Here
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-[10px] font-mono text-slate-500 truncate">No Relic Equipped</div>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Bottom Strip: Forge Any of the 8 SSOT v2.1 Sets */}
-              <div className="z-10 pt-1.5 border-t border-slate-800/80 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400">
-                  Forge 8 Relic Sets into Selected Slot ({selectedGear ? selectedGear.slot : 'Weapon'} · 900G):
+              {/* Bottom Strip: Interactive Relic Inventory Bag & [🧩 Hero Shards] Tab (Replaces 900G Craft Strip 100%) */}
+              <div className="z-10 pt-2 border-t border-slate-800/90 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <span className="text-[10px] font-mono text-amber-300 uppercase font-bold">
+                    Inventory Bag (Drag Borderless Icon to Slot or Click to Equip) · Allowed Weapon: {getHeroAllowedWeaponRole(selectedHeroData.role)}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {(
+                      [
+                        { id: 'ALL', label: 'All Relics' },
+                        { id: 'Weapon', label: '⚔️ Weapon' },
+                        { id: 'Armor', label: '🛡️ Armor' },
+                        { id: 'Ring I', label: '💍 Ring I' },
+                        { id: 'Ring II', label: '💍 Ring II' },
+                        { id: 'Core Sigil', label: '🔮 Sigil' },
+                        { id: 'SHARDS', label: '🧩 Hero Shards' },
+                      ] as { id: GearSlot | 'ALL' | 'SHARDS'; label: string }[]
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setForgeInventoryFilter(tab.id)}
+                        className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold cursor-pointer ${
+                          forgeInventoryFilter === tab.id
+                            ? 'bg-amber-400 text-slate-950 border-amber-200'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {EQUIPMENT_SETS.map((s) => (
-                    <button
-                      key={s.id}
-                      disabled={gold < 900}
-                      onClick={() =>
-                        handleForgeNewRelic(s.id, selectedGear ? selectedGear.slot : 'Weapon')
-                      }
-                      className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-200 truncate cursor-pointer"
-                    >
-                      ⚒️ {s.displayName}
-                    </button>
-                  ))}
-                </div>
+
+                {forgeInventoryFilter === 'SHARDS' ? (
+                  /* [🧩 HERO SHARDS] MOCKUP CRYSTAL SHARD CARDS */
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 max-h-28 overflow-y-auto pr-1">
+                    {RESONATORS.map((r) => {
+                      const p = heroProgress[r.id];
+                      const curShards = heroShards[r.id] || 0;
+                      const reqShards = getAscensionShardCost(p.stars);
+                      const elMeta = ELEMENT_META[r.element];
+                      const canAscendNow =
+                        p.unlocked && p.stars < MAX_HERO_STARS && curShards >= reqShards;
+
+                      return (
+                        <div
+                          key={r.id}
+                          onClick={() => setSelectedHeroId(r.id)}
+                          style={{
+                            borderColor: canAscendNow ? '#fbbf24' : `${elMeta.color}88`,
+                            background: `linear-gradient(135deg, ${elMeta.color}22 0%, #090d18 100%)`,
+                          }}
+                          className="p-1.5 rounded-lg border flex flex-col justify-between gap-1 cursor-pointer hover:brightness-110"
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <img
+                              src={UI_ICONS.elem[r.element]}
+                              alt={r.element}
+                              className="w-3.5 h-3.5 object-contain pixelated"
+                            />
+                            <span className="text-[9px] font-bold text-white truncate">
+                              {r.name.split(' ')[0]}
+                            </span>
+                            <span className="text-[8px] font-mono text-amber-300">
+                              {formatHeroStarLabel(p.stars)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[9px] font-mono text-sky-300 font-bold">
+                              🧩 {curShards}/{reqShards || 'MAX'}
+                            </span>
+                            {canAscendNow && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAscendStar(r.id);
+                                }}
+                                className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-mono font-extrabold text-[8px] cursor-pointer"
+                              >
+                                Ascend
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* DRAGGABLE RELIC INVENTORY BAG (100% BORDERLESS DRAG PREVIEW + 16x16 WEAPON ROLE BADGE) */
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-28 overflow-y-auto pr-1">
+                    {gearInventory
+                      .filter((g) =>
+                        forgeInventoryFilter === 'ALL' ? true : g.slot === forgeInventoryFilter
+                      )
+                      .map((g) => {
+                        const isSelected = selectedGearId === g.id;
+                        const isEquippedHere = g.equippedBy === selectedHeroId;
+                        const canUse = canHeroEquipGear(selectedHeroData.role, g);
+                        const wepBadgeUrl =
+                          g.slot === 'Weapon' ? getWeaponRoleBadgeIconUrl(g.weaponRole) : null;
+
+                        return (
+                          <div
+                            key={g.id}
+                            draggable
+                            onDragStart={(e) => {
+                              const blankCanvas = document.createElement('canvas');
+                              blankCanvas.width = 1;
+                              blankCanvas.height = 1;
+                              e.dataTransfer.setDragImage(blankCanvas, 0, 0);
+                              setDraggedGear({ item: g, x: e.clientX, y: e.clientY });
+                            }}
+                            onDrag={(e) => {
+                              if (e.clientX === 0 && e.clientY === 0) return;
+                              setDraggedGear((prev) =>
+                                prev ? { ...prev, x: e.clientX, y: e.clientY } : null
+                              );
+                            }}
+                            onDragEnd={() => setDraggedGear(null)}
+                            onClick={() => {
+                              setSelectedGearId(g.id);
+                              if (!isEquippedHere) {
+                                handleEquipGearToHero(g, selectedHeroId);
+                              }
+                            }}
+                            title={`${g.name} (+${g.level} ${g.set}) — Drag to Slot or Click to Equip`}
+                            className={`relative p-1.5 rounded-lg border flex items-center gap-1.5 cursor-grab active:cursor-grabbing select-none ${
+                              isSelected
+                                ? 'bg-slate-900 border-amber-400'
+                                : isEquippedHere
+                                ? 'bg-emerald-950/40 border-emerald-500/60'
+                                : canUse
+                                ? 'bg-slate-950 border-slate-800 hover:border-slate-600'
+                                : 'bg-slate-950/50 border-rose-900/50 opacity-55'
+                            }`}
+                          >
+                            {/* 16x16px Weapon Role Icon at Top-Left of Weapon Item */}
+                            {wepBadgeUrl && (
+                              <img
+                                src={wepBadgeUrl}
+                                alt=""
+                                className="absolute top-0.5 left-0.5 w-4 h-4 object-contain pixelated z-10 drop-shadow"
+                              />
+                            )}
+                            <img
+                              src={getGearItemIconUrl(g)}
+                              alt={g.name}
+                              className="w-7 h-7 object-contain pixelated shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[9px] font-bold text-white truncate">
+                                +{g.level} {g.slot}
+                              </div>
+                              <div className="text-[8px] font-mono text-slate-400 truncate">
+                                {g.equippedBy
+                                  ? `Eq: ${RESONATORS.find((r) => r.id === g.equippedBy)?.name.split(' ')[0]}`
+                                  : g.set}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
+
+              {/* 100% BORDERLESS & ZERO-BACKGROUND FLOATING GEAR DRAG SPRITE */}
+              {draggedGear && (
+                <img
+                  src={getGearItemIconUrl(draggedGear.item)}
+                  alt=""
+                  style={{ left: `${draggedGear.x}px`, top: `${draggedGear.y}px` }}
+                  className="fixed pointer-events-none z-50 w-16 h-16 object-contain pixelated -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_8px_14px_rgba(0,0,0,0.95)]"
+                />
+              )}
             </div>
 
             {/* RIGHT 45% (5 Cols): Combat Stat Readout + Gold SET BONUS ACTIVE + AUTO-EQUIP & ENHANCE +1 */}
@@ -4990,7 +5568,13 @@ export default function App() {
                         : 'Starfall Executioner';
                     setGearInventory((prev) =>
                       prev.map((item) =>
-                        item.equippedBy === selectedHeroId ? { ...item, set: recSet } : item
+                        item.equippedBy === selectedHeroId
+                          ? {
+                              ...item,
+                              set: recSet,
+                              iconUrl: getGearIconUrl(recSet, item.slot, item.weaponRole, item.sigilTrait?.id),
+                            }
+                          : item
                       )
                     );
                     sfx.play('forge_ok');
@@ -5257,7 +5841,7 @@ export default function App() {
                   title={`Starfall Exchange Shop (${starfallShards} Shards)`}
                   className="relative w-10 h-10 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 border border-rose-400 text-rose-200 flex items-center justify-center shadow-md transition-transform active:scale-95 cursor-pointer"
                 >
-                  <span className="text-base leading-none">🏛️</span>
+                  <img src={UI_ICONS.currency.starfallShard} alt="" className="w-5 h-5 object-contain pixelated" />
                   <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-rose-500 text-white font-mono font-bold text-[9px] leading-tight">
                     {starfallShards}
                   </span>
@@ -5335,11 +5919,14 @@ export default function App() {
                         onBuy: () => {
                           if (starfallShards < 80) return;
                           setStarfallShards((s) => s - 80);
+                          const wRole = getHeroAllowedWeaponRole(featuredBannerHero.role);
                           const sigWep: GearItem = {
                             id: `G_SIGWEP_${Date.now()}`,
                             name: `${featuredBannerHero.name}'s Astral Edge`,
                             slot: 'Weapon',
                             set: 'Starfall Executioner',
+                            weaponRole: wRole,
+                            iconUrl: getGearIconUrl('Starfall Executioner', 'Weapon', wRole),
                             level: 9,
                             failStackCount: 0,
                             mainStatKey: 'ATK%',
@@ -5459,19 +6046,15 @@ export default function App() {
                             </span>
 
                             {item.mockupType === 'WEAPON' && (
-                              <svg viewBox="0 0 80 80" className="w-24 h-24 drop-shadow-[0_0_12px_rgba(251,191,36,0.5)]">
-                                <defs>
-                                  <linearGradient id="mockBlade" x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0%" stopColor="#fef08a" />
-                                    <stop offset="50%" stopColor="#f59e0b" />
-                                    <stop offset="100%" stopColor="#ef4444" />
-                                  </linearGradient>
-                                </defs>
-                                <circle cx="40" cy="40" r="28" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4 3" />
-                                <path d="M58,16 L64,22 L32,54 L22,58 L26,48 Z" fill="url(#mockBlade)" />
-                                <rect x="18" y="52" width="14" height="4" rx="2" transform="rotate(45 25 54)" fill="#fde047" />
-                                <path d="M16,64 L23,57" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />
-                              </svg>
+                              <img
+                                src={getGearIconUrl(
+                                  'Starfall Executioner',
+                                  'Weapon',
+                                  getHeroAllowedWeaponRole(featuredBannerHero.role)
+                                )}
+                                alt=""
+                                className="w-20 h-20 object-contain pixelated drop-shadow-[0_0_12px_rgba(251,191,36,0.5)]"
+                              />
                             )}
                             {item.mockupType === 'HERO_FEATURED' && (
                               <div className="w-28 h-28">
@@ -5484,12 +6067,18 @@ export default function App() {
                               </div>
                             )}
                             {item.mockupType === 'CHEST' && (
-                              <svg viewBox="0 0 80 80" className="w-24 h-24 drop-shadow-[0_0_12px_rgba(192,132,252,0.5)]">
-                                <rect x="16" y="30" width="48" height="32" rx="4" fill="#3b0764" stroke="#c084fc" strokeWidth="2" />
-                                <path d="M14,32 L22,20 L58,20 L66,32 Z" fill="#581c87" stroke="#e9d5ff" strokeWidth="2" />
-                                <rect x="35" y="28" width="10" height="12" rx="2" fill="#fbbf24" />
-                                <circle cx="40" cy="34" r="2.5" fill="#090d16" />
-                              </svg>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <img
+                                  src={UI_ICONS.shop.reforgeStone}
+                                  alt=""
+                                  className="w-14 h-14 object-contain pixelated drop-shadow-[0_0_10px_rgba(192,132,252,0.5)]"
+                                />
+                                <img
+                                  src={UI_ICONS.shop.relicChest}
+                                  alt=""
+                                  className="w-14 h-14 object-contain pixelated drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                                />
+                              </div>
                             )}
 
                             <div className="absolute bottom-1.5 inset-x-1.5 bg-slate-950/90 border border-rose-500/40 rounded px-2 py-0.5 flex items-center justify-between text-[10px] font-mono">
@@ -6454,16 +7043,16 @@ export default function App() {
         )}
       </main>
 
-      {/* BOTTOM DOCK BAR: Fixed 5-Tab Navigation */}
+      {/* BOTTOM DOCK BAR: Fixed 5-Tab Navigation with .webp Icons */}
       <nav className="h-16 w-full bg-[#0a0d18]/95 border-t border-amber-500/30 flex justify-around items-center z-50 shrink-0">
         {(
           [
-            { id: 'BATTLE', icon: '⚔️', label: 'Tower Battle' },
-            { id: 'HEROES', icon: '👥', label: 'Heroes & Gambit' },
-            { id: 'FORGE', icon: '🔨', label: 'Equipment & Forge' },
-            { id: 'SUMMON', icon: '🔮', label: 'Summon' },
-            { id: 'REWIND', icon: '⏳', label: 'Chrono Rewind' },
-          ] as { id: MainTab; icon: string; label: string }[]
+            { id: 'BATTLE', iconUrl: UI_ICONS.nav.battle, label: 'Tower Battle' },
+            { id: 'HEROES', iconUrl: UI_ICONS.nav.heroes, label: 'Heroes & Gambit' },
+            { id: 'FORGE', iconUrl: UI_ICONS.nav.forge, label: 'Equipment & Forge' },
+            { id: 'SUMMON', iconUrl: UI_ICONS.nav.summon, label: 'Summon' },
+            { id: 'REWIND', iconUrl: UI_ICONS.nav.rewind, label: 'Chrono Rewind' },
+          ] as { id: MainTab; iconUrl: string; label: string }[]
         ).map((tab) => {
           const isActive =
             tab.id === 'BATTLE'
@@ -6485,24 +7074,24 @@ export default function App() {
                   : 'text-slate-400 hover:text-slate-100'
               }`}
             >
-              <span className="text-base leading-none">{tab.icon}</span>
+              <img src={tab.iconUrl} alt="" className="w-5 h-5 object-contain pixelated" />
               <span className="text-[11px] tracking-wide whitespace-nowrap">{tab.label}</span>
             </button>
           );
         })}
       </nav>
 
-      {/* ROGUELITE 22 MAJOR ARCANA TAROT 3-CARD 3D FLIP MODAL (EVERY 5 FLOORS) */}
+      {/* ROGUELITE 22 MAJOR ARCANA TAROT 3-CARD 3D HOLD-TO-FLIP MODAL (SINGLE-TIER · 5-FLOOR DURATION) */}
       {blessingChoices && (
         <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0a0d18] border-2 border-amber-500/50 rounded-2xl max-w-4xl w-full p-6 space-y-5 shadow-2xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
                 <div className="text-xs font-mono text-amber-300">
-                  Every 5th Floor Boss Cleared · 22 Major Arcana Sanctuary · Click Face-Down Card to Flip!
+                  Every 5th Floor Boss Cleared · Single-Tier Non-Stacking Blessing · Active for Next 5 Floors (F{floor}–F{floor + 4})
                 </div>
                 <h2 className="text-xl font-bold text-white font-display">
-                  Select 1 Major Arcana Tarot Blessing (Tier I → II → III)
+                  Select 1 Major Arcana Tarot Blessing (Hold or Click Face-Down Card to Flip!)
                 </h2>
               </div>
               <div className="flex items-center gap-2">
@@ -6523,12 +7112,17 @@ export default function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {blessingChoices.map((card, idx) => {
-                const curTier = blessings[card.id] || 0;
-                const nextTier = Math.min(3, curTier + 1);
                 const isFlipped = tarotFlipped[idx];
+                const holdPct = tarotHoldProgress[idx] || 0;
+                const isHolding = holdingTarotIdx === idx && !isFlipped;
                 return (
                   <div
                     key={card.id}
+                    onPointerDown={() => {
+                      if (!isFlipped) setHoldingTarotIdx(idx);
+                    }}
+                    onPointerUp={() => setHoldingTarotIdx(null)}
+                    onPointerLeave={() => setHoldingTarotIdx(null)}
                     onClick={() => {
                       if (!isFlipped) {
                         setTarotFlipped((prev) => {
@@ -6539,11 +7133,19 @@ export default function App() {
                         sfx.play('hit');
                         return;
                       }
-                      setBlessings((prev) => ({ ...prev, [card.id]: nextTier }));
+                      setActiveTarotBlessing({ cardId: card.id, expiresAtFloor: floor + 4 });
+                      setHoldingTarotIdx(null);
                       setBlessingChoices(null);
                       sfx.play('gacha');
                     }}
-                    className={`group relative rounded-2xl border-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between p-4 min-h-[340px] ${
+                    style={
+                      isHolding
+                        ? {
+                            transform: `perspective(700px) rotateY(${(holdPct / 100) * 35}deg) scale(${1 + (holdPct / 100) * 0.06})`,
+                          }
+                        : undefined
+                    }
+                    className={`group relative rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden flex flex-col justify-between p-4 min-h-[340px] ${
                       !isFlipped
                         ? 'bg-gradient-to-b from-[#130d26] to-[#070a14] border-purple-400/60 hover:border-amber-400 hover:-translate-y-1 shadow-lg shadow-purple-500/15'
                         : idx === 0
@@ -6559,8 +7161,18 @@ export default function App() {
                         <div className="my-2 p-2 rounded-xl border border-amber-400/40 bg-slate-950/80 shadow-[0_0_25px_rgba(168,85,247,0.35)] group-hover:scale-105 transition-transform">
                           <PixelTarotCardBackCanvas className="w-36 h-44" />
                         </div>
-                        <div className="w-full py-2 text-center rounded-lg bg-purple-500/20 border border-purple-400/50 text-xs font-mono font-bold text-amber-200">
-                          [🃏 Click to Flip Card]
+                        <div className="w-full space-y-1">
+                          {holdPct > 0 && (
+                            <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-amber-400/50">
+                              <div
+                                className="h-full bg-amber-400 transition-all duration-75"
+                                style={{ width: `${holdPct}%` }}
+                              />
+                            </div>
+                          )}
+                          <div className="w-full py-2 text-center rounded-lg bg-purple-500/20 border border-purple-400/50 text-xs font-mono font-bold text-amber-200">
+                            [🃏 Hold or Click to Flip]
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -6569,7 +7181,7 @@ export default function App() {
                           <div className="flex items-center justify-between text-xs font-mono">
                             <span className="text-amber-300 font-bold">{card.id}</span>
                             <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/40 text-amber-200">
-                              {card.rarity} · Tier {nextTier}/3
+                              {card.rarity} · 5 Floors (F{floor}–F{floor + 4})
                             </span>
                           </div>
                           <div className="flex justify-center py-1">
@@ -6587,7 +7199,7 @@ export default function App() {
                         <div className="mt-3 py-2 text-center bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-lg">
                           {idx === 0
                             ? `[Select Tarot · Auto in ${tarotAutoTimer.toFixed(0)}s]`
-                            : '[Select Tarot Blessing]'}
+                            : '[Select 5-Floor Blessing]'}
                         </div>
                       </>
                     )}
@@ -6702,6 +7314,9 @@ export default function App() {
                       ? 'border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.55)] bg-gradient-to-b from-purple-500/25 via-slate-950 to-slate-950'
                       : 'border-sky-400 shadow-[0_0_16px_rgba(56,189,248,0.45)] bg-gradient-to-b from-sky-500/20 via-slate-950 to-slate-950';
 
+                  const holdPct = gachaHoldProgress[card.uid] || 0;
+                  const isHolding = holdingGachaUid === card.uid && !card.flipped;
+
                   return (
                     <motion.div
                       key={card.uid}
@@ -6718,6 +7333,13 @@ export default function App() {
                           },
                         },
                       }}
+                      onPointerDown={() => {
+                        if (!card.flipped && !card.shattering) {
+                          setHoldingGachaUid(card.uid);
+                        }
+                      }}
+                      onPointerUp={() => setHoldingGachaUid(null)}
+                      onPointerLeave={() => setHoldingGachaUid(null)}
                       onClick={() => {
                         if (card.flipped || card.shattering) return;
                         if (card.isFakeOut) {
@@ -6754,6 +7376,13 @@ export default function App() {
                           );
                         }
                       }}
+                      style={
+                        isHolding
+                          ? {
+                              transform: `perspective(600px) rotateY(${(holdPct / 100) * 35}deg) scale(${1 + (holdPct / 100) * 0.05})`,
+                            }
+                          : undefined
+                      }
                       className={`relative rounded-xl border-2 p-3 flex flex-col items-center justify-between min-h-[250px] transition-colors cursor-pointer select-none overflow-hidden ${auraStyles} ${
                         card.shattering ? 'animate-bounce ring-4 ring-amber-300 scale-105' : 'hover:-translate-y-1'
                       }`}
@@ -6785,22 +7414,24 @@ export default function App() {
                           <div className="my-2">
                             <PixelTarotCardBackCanvas className="w-28 h-36" />
                           </div>
-                          <span className="text-[10px] font-mono text-slate-300">Click to Flip</span>
+                          {holdPct > 0 && (
+                            <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-amber-400/50 mb-1">
+                              <div
+                                className="h-full bg-amber-400 transition-all duration-75"
+                                style={{ width: `${holdPct}%` }}
+                              />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-mono text-slate-300">Hold or Click to Flip</span>
                         </div>
                       ) : (
                         <div className="flex-1 flex flex-col items-center justify-between w-full">
                           <div className="w-full flex items-center justify-between">
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold ${
-                                card.actualRarity === 'SSR'
-                                  ? 'bg-amber-400 text-slate-950'
-                                  : card.actualRarity === 'SR'
-                                  ? 'bg-purple-400 text-slate-950'
-                                  : 'bg-sky-400 text-slate-950'
-                              }`}
-                            >
-                              {card.actualRarity}
-                            </span>
+                            <img
+                              src={UI_ICONS.rarity[card.actualRarity as 'R' | 'SR' | 'SSR']}
+                              alt={card.actualRarity}
+                              className="h-4 w-auto object-contain pixelated"
+                            />
                             <span className="text-[9px] font-mono text-amber-200 truncate max-w-[110px]">
                               {card.isFakeOut ? '⚡ FAKE-OUT!' : card.note}
                             </span>
@@ -6815,7 +7446,7 @@ export default function App() {
                               {hero.name}
                             </div>
                             <div className="text-[10px] font-mono text-amber-300 truncate">
-                              {card.bonusRelicName ? `+ ${card.bonusRelicName}` : hero.title}
+                              {card.bonusRelicName ? `+ ${card.bonusRelicName}` : card.note}
                             </div>
                           </div>
                         </div>
@@ -6877,37 +7508,37 @@ export default function App() {
                     [
                       {
                         id: 'BOUNTY' as SanctuaryTabId,
-                        icon: '🪙',
+                        iconUrl: UI_ICONS.currency.gold,
                         name: 'Golden Bounty Vault',
                         sub: 'Massive Gold & Sweep Chests',
                       },
                       {
                         id: 'STRIKER' as SanctuaryTabId,
-                        icon: '⚔️',
+                        iconUrl: UI_ICONS.role['Melee DPS'],
                         name: 'Striker Sanctum',
                         sub: 'Starfall Executioner Set',
                       },
                       {
                         id: 'DEFENDER' as SanctuaryTabId,
-                        icon: '🛡️',
+                        iconUrl: UI_ICONS.role['Tank / Breaker'],
                         name: 'Bastion Foundry',
                         sub: 'Aegis of Dawn & Vanguard',
                       },
                       {
                         id: 'TACTICIAN' as SanctuaryTabId,
-                        icon: '🔮',
+                        iconUrl: UI_ICONS.role.Debuffer,
                         name: 'Astral Observatory',
                         sub: 'Chrono Weaver & Scholar',
                       },
                       {
                         id: 'ARENA' as SanctuaryTabId,
-                        icon: '🏟️',
+                        iconUrl: UI_ICONS.currency.arenaToken,
                         name: '1v1 Async Arena',
                         sub: `${arenaRankPts} RP · ${arenaTokens}🏆 Tokens`,
                       },
                       {
                         id: 'GUILD_RAID' as SanctuaryTabId,
-                        icon: '🐉',
+                        iconUrl: UI_ICONS.currency.guildMedal,
                         name: 'Guild Raid: Yog-Sothoth',
                         sub: `Guild Lv.${guildState.level} · ${guildAttempts}/3 Tries`,
                       },
@@ -6924,7 +7555,7 @@ export default function App() {
                             : 'bg-slate-950/80 border-slate-800/90 text-slate-300 hover:border-slate-700'
                         }`}
                       >
-                        <span className="text-xl leading-none">{tab.icon}</span>
+                        <img src={tab.iconUrl} alt="" className="w-6 h-6 object-contain pixelated shrink-0" />
                         <div className="min-w-0">
                           <div className="text-xs font-bold font-display truncate">{tab.name}</div>
                           <div className="text-[10px] font-mono text-slate-400 truncate">{tab.sub}</div>
@@ -7347,34 +7978,36 @@ export default function App() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(
                 [
-                  { id: 'GOLD' as MerchantTabId, label: '1. 🪙 General Gold Shop' },
-                  { id: 'STARFALL' as MerchantTabId, label: '2. 🌟 Starfall Exchange' },
-                  { id: 'ARENA' as MerchantTabId, label: '3. 🏆 Arena Armory' },
-                  { id: 'GUILD' as MerchantTabId, label: '4. 🎖️ Guild Treasury' },
+                  { id: 'GOLD' as MerchantTabId, iconUrl: UI_ICONS.currency.gold, label: '1. General Gold Shop' },
+                  { id: 'STARFALL' as MerchantTabId, iconUrl: UI_ICONS.currency.starfallShard, label: '2. Starfall Exchange' },
+                  { id: 'ARENA' as MerchantTabId, iconUrl: UI_ICONS.currency.arenaToken, label: '3. Arena Armory' },
+                  { id: 'GUILD' as MerchantTabId, iconUrl: UI_ICONS.currency.guildMedal, label: '4. Guild Treasury' },
                 ]
               ).map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setMerchantTab(t.id)}
-                  className={`py-2 px-3 rounded-xl border font-mono font-bold text-xs cursor-pointer transition-colors ${
+                  className={`py-2 px-3 rounded-xl border font-mono font-bold text-xs cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
                     merchantTab === t.id
                       ? 'bg-amber-400 text-slate-950 border-amber-300'
                       : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
                   }`}
                 >
-                  {t.label}
+                  <img src={t.iconUrl} alt="" className="w-4 h-4 object-contain pixelated shrink-0" />
+                  <span>{t.label}</span>
                 </button>
               ))}
             </div>
 
             {/* TAB 1: GENERAL GOLD SHOP */}
             {merchantTab === 'GOLD' && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 pt-1">
                 <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/50 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.currency.sweepTicket} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-amber-300">INSTANT SWEEP</span>
                     <h3 className="text-sm font-bold text-white font-display">🎫 1x Dungeon Sweep Ticket</h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400">
                       Instantly sweeps any cleared Dungeon Tier without fighting the boss.
                     </p>
                   </div>
@@ -7388,10 +8021,14 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/50 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1">
+                      <img src={UI_ICONS.currency.sweepTicket} alt="" className="w-10 h-10 object-contain pixelated" />
+                      <img src={UI_ICONS.currency.sweepTicket} alt="" className="w-8 h-8 object-contain pixelated -ml-3 opacity-90" />
+                    </div>
                     <span className="text-[10px] font-mono text-emerald-300">10% BULK DISCOUNT</span>
                     <h3 className="text-sm font-bold text-white font-display">🎫 10x Dungeon Sweep Bundle</h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400">
                       Adds +10 Sweep Tickets at a 10% Gold discount (saves 15,000 Gold).
                     </p>
                   </div>
@@ -7405,10 +8042,11 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/50 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.shop.failstackCatalyst} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-purple-300">ANVIL ENHANCEMENT</span>
                     <h3 className="text-sm font-bold text-white font-display">⚒️ Masterwork Forge Catalyst</h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400">
                       Guaranteed +1 Level to your currently selected Relic in the Gear &amp; Forge tab.
                     </p>
                   </div>
@@ -7429,19 +8067,56 @@ export default function App() {
                     [Enhance Selected Relic · 25,000 Gold]
                   </button>
                 </div>
+
+                <div className="p-4 rounded-xl bg-slate-950 border border-sky-400/50 flex flex-col justify-between gap-3">
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.shop.heroShardChest} alt="" className="w-10 h-10 object-contain pixelated" />
+                    <span className="text-[10px] font-mono text-sky-300">HERO SOUL SHARD CHEST</span>
+                    <h3 className="text-sm font-bold text-white font-display">
+                      🧩 +30 {selectedHeroData.name} Shards
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Grants +30 Character Shards for {selectedHeroData.name} (used for 1★➔5★ &amp; A1★➔A5★ Ascension).
+                    </p>
+                  </div>
+                  <button
+                    disabled={gold < 20000}
+                    onClick={() => {
+                      if (gold < 20000) return;
+                      setGold((g) => g - 20000);
+                      setHeroShards((prev) => ({
+                        ...prev,
+                        [selectedHeroData.id]: (prev[selectedHeroData.id] || 0) + 30,
+                      }));
+                      sfx.play('gacha');
+                    }}
+                    className="w-full py-2 rounded-lg bg-sky-400 hover:bg-sky-300 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
+                  >
+                    [Buy Shard Chest · 20,000 Gold]
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* TAB 2: STARFALL EXCHANGE (UNLOCKS LOCKED SSR HEROES!) */}
+            {/* TAB 2: STARFALL EXCHANGE (UNLOCKS LOCKED SSR HEROES & GRANTS SHARDS!) */}
             {merchantTab === 'STARFALL' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
                 <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img
+                      src={getGearIconUrl(
+                        'Starfall Executioner',
+                        'Weapon',
+                        getHeroAllowedWeaponRole(featuredBannerHero.role)
+                      )}
+                      alt=""
+                      className="w-10 h-10 object-contain pixelated"
+                    />
                     <span className="text-[10px] font-mono text-amber-300">5★ SIGNATURE RELIC</span>
                     <h3 className="text-sm font-bold text-white font-display">
                       {featuredBannerHero.name}&apos;s Astral Edge (+9)
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400">
                       +9 Masterwork Weapon (+20% ATK &amp; CRIT Substats) equipped to {featuredBannerHero.name}.
                     </p>
                   </div>
@@ -7450,11 +8125,14 @@ export default function App() {
                     onClick={() => {
                       if (starfallShards < 80) return;
                       setStarfallShards((s) => s - 80);
+                      const wRole = getHeroAllowedWeaponRole(featuredBannerHero.role);
                       const sigWep: GearItem = {
                         id: `G_SIGWEP_${Date.now()}`,
                         name: `${featuredBannerHero.name}'s Astral Edge`,
                         slot: 'Weapon',
                         set: 'Starfall Executioner',
+                        weaponRole: wRole,
+                        iconUrl: getGearIconUrl('Starfall Executioner', 'Weapon', wRole),
                         level: 9,
                         failStackCount: 0,
                         mainStatKey: 'ATK%',
@@ -7483,13 +8161,14 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-rose-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.shop.heroShardChest} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-rose-300">FEATURED SOVEREIGN</span>
                     <h3 className="text-sm font-bold text-white font-display">
-                      {featuredBannerHero.name} Contract
+                      {featuredBannerHero.name} Contract (+80🧩)
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Unlocks {featuredBannerHero.name} immediately (or ascends +1★ &amp; +5 Lv if owned).
+                    <p className="text-xs text-slate-400">
+                      Unlocks {featuredBannerHero.name} immediately and grants +80 {featuredBannerHero.name} Shards.
                     </p>
                   </div>
                   <button
@@ -7497,18 +8176,17 @@ export default function App() {
                     onClick={() => {
                       if (starfallShards < 100) return;
                       setStarfallShards((s) => s - 100);
-                      setHeroProgress((prev) => {
-                        const cur = prev[featuredBannerHero.id];
-                        return {
-                          ...prev,
-                          [featuredBannerHero.id]: {
-                            ...cur,
-                            unlocked: true,
-                            stars: cur.unlocked ? Math.min(5, cur.stars + 1) : cur.stars,
-                            level: cur.unlocked ? Math.min(100, cur.level + 5) : cur.level,
-                          },
-                        };
-                      });
+                      setHeroProgress((prev) => ({
+                        ...prev,
+                        [featuredBannerHero.id]: {
+                          ...prev[featuredBannerHero.id],
+                          unlocked: true,
+                        },
+                      }));
+                      setHeroShards((prev) => ({
+                        ...prev,
+                        [featuredBannerHero.id]: (prev[featuredBannerHero.id] || 0) + 80,
+                      }));
                       sfx.play('gacha');
                     }}
                     className="w-full py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-mono font-bold text-xs cursor-pointer"
@@ -7518,13 +8196,14 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-sky-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.shop.heroShardChest} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-sky-300">WISHLIST #1 SSR</span>
                     <h3 className="text-sm font-bold text-white font-display">
-                      {RESONATORS.find((r) => r.id === wishlistIds[0])?.name || 'Ignis'} Crest
+                      {RESONATORS.find((r) => r.id === wishlistIds[0])?.name || 'Ignis'} Crest (+60🧩)
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Unlocks your #1 Wishlist SSR Resonator (or ascends +1★ &amp; +5 Lv if owned).
+                    <p className="text-xs text-slate-400">
+                      Unlocks your #1 Wishlist SSR Resonator and grants +60 Character Shards.
                     </p>
                   </div>
                   <button
@@ -7533,18 +8212,17 @@ export default function App() {
                       if (starfallShards < 75) return;
                       const targetId = wishlistIds[0] || 'H01';
                       setStarfallShards((s) => s - 75);
-                      setHeroProgress((prev) => {
-                        const cur = prev[targetId];
-                        return {
-                          ...prev,
-                          [targetId]: {
-                            ...cur,
-                            unlocked: true,
-                            stars: cur.unlocked ? Math.min(5, cur.stars + 1) : cur.stars,
-                            level: cur.unlocked ? Math.min(100, cur.level + 5) : cur.level,
-                          },
-                        };
-                      });
+                      setHeroProgress((prev) => ({
+                        ...prev,
+                        [targetId]: {
+                          ...prev[targetId],
+                          unlocked: true,
+                        },
+                      }));
+                      setHeroShards((prev) => ({
+                        ...prev,
+                        [targetId]: (prev[targetId] || 0) + 60,
+                      }));
                       sfx.play('gacha');
                     }}
                     className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs cursor-pointer"
@@ -7554,10 +8232,14 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <img src={UI_ICONS.shop.reforgeStone} alt="" className="w-10 h-10 object-contain pixelated" />
+                      <img src={UI_ICONS.shop.relicChest} alt="" className="w-9 h-9 object-contain pixelated" />
+                    </div>
                     <span className="text-[10px] font-mono text-purple-300">CATALYST CHEST</span>
                     <h3 className="text-sm font-bold text-white font-display">Reforge &amp; Catalyst Chest</h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-400">
                       Grants +15,000 Gold &amp; upgrades your Selected Relic by +1 Level.
                     </p>
                   </div>
@@ -7588,7 +8270,8 @@ export default function App() {
             {merchantTab === 'ARENA' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div className="p-4 rounded-xl bg-slate-950 border border-sky-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.currency.starlightGem} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-sky-300">STARLIGHT GEM SUPPLY</span>
                     <h3 className="text-sm font-bold text-white font-display">💎 480 Starlight Gems (3 Summons)</h3>
                     <p className="text-xs text-slate-400 mt-1">
@@ -7610,7 +8293,11 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-amber-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <img src={UI_ICONS.currency.gold} alt="" className="w-10 h-10 object-contain pixelated" />
+                      <img src={UI_ICONS.currency.sweepTicket} alt="" className="w-9 h-9 object-contain pixelated" />
+                    </div>
                     <span className="text-[10px] font-mono text-amber-300">CHAMPION BOUNTY</span>
                     <h3 className="text-sm font-bold text-white font-display">🪙 35,000 Gold + 2🎫 Sweep Tickets</h3>
                     <p className="text-xs text-slate-400 mt-1">
@@ -7638,7 +8325,12 @@ export default function App() {
             {merchantTab === 'GUILD' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div className="p-4 rounded-xl bg-slate-950 border border-rose-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img
+                      src={getGearIconUrl('Voidweaver', 'Core Sigil', undefined, SIGIL_CORE_TRAITS[2].id)}
+                      alt=""
+                      className="w-10 h-10 object-contain pixelated"
+                    />
                     <span className="text-[10px] font-mono text-rose-300">EXOTIC RAID RELIC</span>
                     <h3 className="text-sm font-bold text-white font-display">
                       🌌 Exotic Voidweaver Core Sigil +6
@@ -7656,7 +8348,8 @@ export default function App() {
                         id: `G_RAID_${Date.now()}`,
                         name: 'Yog-Sothoth Voidweaver Core',
                         slot: 'Core Sigil',
-                        set: 'Starfall Executioner',
+                        set: 'Voidweaver',
+                        iconUrl: getGearIconUrl('Voidweaver', 'Core Sigil', undefined, SIGIL_CORE_TRAITS[2].id),
                         level: 6,
                         failStackCount: 0,
                         mainStatKey: 'CRIT RATE%',
@@ -7680,7 +8373,8 @@ export default function App() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950 border border-purple-400/60 flex flex-col justify-between gap-3">
-                  <div>
+                  <div className="space-y-1.5">
+                    <img src={UI_ICONS.currency.timeShard} alt="" className="w-10 h-10 object-contain pixelated" />
                     <span className="text-[10px] font-mono text-purple-300">TIME SHARD PACT</span>
                     <h3 className="text-sm font-bold text-white font-display">⏳ +120 Chrono Time Shards</h3>
                     <p className="text-xs text-slate-400 mt-1">

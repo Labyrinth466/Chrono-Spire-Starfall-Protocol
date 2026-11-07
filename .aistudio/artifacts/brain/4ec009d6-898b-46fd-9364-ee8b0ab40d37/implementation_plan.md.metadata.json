@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for: (1) Framer Motion staggered bottom-up card entrance animation in Starfall Card Reveal Modal, (2) removing borders while dragging in Heroes & Gambit, and (3) matching the Active Tower Squad & Formation layout perspective to the Tower Battle 2.5D battlefield perspective.",
-  "updatedAt": "2026-11-06T12:26:16.288673003Z",
+  "summary": "Implementation plan to fix all wrong .webp asset sources across the UI, Shop, Summon, Sanctuary, and Equipment modules, and switch the 5-Zone Battle Background renderer to use each zone's clean full_reference.webp with atmospheric parallax effects.",
+  "updatedAt": "2026-11-06T18:42:48.372333604Z",
   "requestFeedback": true,
   "userFacing": true
 }

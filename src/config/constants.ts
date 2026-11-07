@@ -77,6 +77,7 @@ export interface ElementMetaSpec {
   id: ElementType;
   name: ElementType;
   icon: string;
+  iconUrl: string;
   color: string;
   textClass: string;
   borderClass: string;
@@ -86,11 +87,66 @@ export interface ElementMetaSpec {
   effectDesc: string;
 }
 
+export const UI_ICONS = Object.freeze({
+  elem: {
+    Fire: '/assets/ui/elem_fire.webp',
+    Cryo: '/assets/ui/elem_cryo.webp',
+    Wind: '/assets/ui/elem_wind.webp',
+    Electro: '/assets/ui/elem_electro.webp',
+    Light: '/assets/ui/elem_light.webp',
+    Dark: '/assets/ui/elem_dark.webp',
+  } as Readonly<Record<ElementType, string>>,
+  role: {
+    'Melee DPS': '/assets/ui/role_melee.webp',
+    'Ranged DPS': '/assets/ui/role_ranged.webp',
+    'Tank / Breaker': '/assets/ui/role_tank.webp',
+    'Support & Healer': '/assets/ui/role_healer.webp',
+    Debuffer: '/assets/ui/role_debuffer.webp',
+  } as Readonly<Record<RoleType, string>>,
+  rarity: {
+    R: '/assets/ui/rarity_r.webp',
+    SR: '/assets/ui/rarity_sr.webp',
+    SSR: '/assets/ui/rarity_ssr.webp',
+    N: '/assets/ui/rarity_r.webp',
+  } as Readonly<Record<'R' | 'SR' | 'SSR' | 'N', string>>,
+  nav: {
+    battle: '/assets/ui/nav_battle.webp',
+    heroes: '/assets/ui/nav_heroes.webp',
+    forge: '/assets/ui/nav_forge.webp',
+    summon: '/assets/ui/nav_summon.webp',
+    rewind: '/assets/ui/nav_rewind.webp',
+    sanctuary: '/assets/ui/nav_sanctuary.webp',
+    shop: '/assets/ui/nav_shop.webp',
+    wiki: '/assets/ui/nav_wiki.webp',
+  },
+  shop: {
+    reforgeStone: '/assets/ui/shop_reforge_stone.webp',
+    failstackCatalyst: '/assets/ui/shop_failstack_catalyst.webp',
+    heroShardChest: '/assets/ui/shop_hero_shard_chest.webp',
+    relicChest: '/assets/ui/shop_relic_chest.webp',
+  },
+  currency: {
+    gold: '/assets/ui/gold.webp',
+    starlightGem: '/assets/ui/starlight_gem.webp',
+    starfallShard: '/assets/ui/starfall_shard.webp',
+    timeShard: '/assets/ui/time_shard.webp',
+    weeklyKey: '/assets/ui/weekly_key.webp',
+    sweepTicket: '/assets/ui/sweep_ticket.webp',
+    guildMedal: '/assets/ui/guild_medal.webp',
+    arenaToken: '/assets/ui/arena_token.webp',
+  },
+  stars: {
+    gold: '/assets/ui/star_gold.webp',
+    awakened: '/assets/ui/star_awakened.webp',
+  },
+});
+
 export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Object.freeze({
   Fire: {
     id: 'Fire',
     name: 'Fire',
     icon: '🔥',
+    iconUrl: UI_ICONS.elem.Fire,
     color: '#ef4444',
     textClass: 'text-red-400',
     borderClass: 'border-red-500/40',
@@ -103,6 +159,7 @@ export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Obje
     id: 'Cryo',
     name: 'Cryo',
     icon: '❄️',
+    iconUrl: UI_ICONS.elem.Cryo,
     color: '#38bdf8',
     textClass: 'text-sky-400',
     borderClass: 'border-sky-500/40',
@@ -115,6 +172,7 @@ export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Obje
     id: 'Electro',
     name: 'Electro',
     icon: '⚡',
+    iconUrl: UI_ICONS.elem.Electro,
     color: '#c084fc',
     textClass: 'text-purple-400',
     borderClass: 'border-purple-500/40',
@@ -127,6 +185,7 @@ export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Obje
     id: 'Wind',
     name: 'Wind',
     icon: '🌪️',
+    iconUrl: UI_ICONS.elem.Wind,
     color: '#34d399',
     textClass: 'text-emerald-400',
     borderClass: 'border-emerald-500/40',
@@ -139,6 +198,7 @@ export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Obje
     id: 'Light',
     name: 'Light',
     icon: '☀️',
+    iconUrl: UI_ICONS.elem.Light,
     color: '#fbbf24',
     textClass: 'text-amber-300',
     borderClass: 'border-amber-400/40',
@@ -151,6 +211,7 @@ export const ELEMENT_META: Readonly<Record<ElementType, ElementMetaSpec>> = Obje
     id: 'Dark',
     name: 'Dark',
     icon: '🌑',
+    iconUrl: UI_ICONS.elem.Dark,
     color: '#f43f5e',
     textClass: 'text-rose-400',
     borderClass: 'border-rose-500/40',
@@ -283,37 +344,43 @@ export function getFormationRowBonuses(
 
 export const getFormationBonuses = getFormationRowBonuses;
 
+export const TAROT_CARD_BACK_URL = '/assets/tarot/card_back.webp';
+
 export interface MajorArcanaTarotSpec {
   id: string;
   number: string;
   name: string;
   rarity: 'Common' | 'Rare' | 'Epic';
+  artUrl: string;
   desc: string;
+  value: number;
+  secondaryValue?: number;
   tiers: [number, number, number];
   secondaryTiers?: [number, number, number];
 }
 
 export const MAJOR_ARCANA_TAROT: readonly MajorArcanaTarotSpec[] = Object.freeze([
-  { id: 'ARCANA_00', number: '0', name: 'The Fool', rarity: 'Epic', desc: 'At floor start, randomly grant +25% / +40% / +50% ATK, Crit Rate, or Break Power.', tiers: [25, 40, 50] },
-  { id: 'ARCANA_01', number: 'I', name: 'The Magician', rarity: 'Rare', desc: 'Team Effect Hit Rate +15%/+25%/+40% and Elemental Reaction DMG +25%/+40%/+65%.', tiers: [15, 25, 40], secondaryTiers: [25, 40, 65] },
-  { id: 'ARCANA_02', number: 'II', name: 'The High Priestess', rarity: 'Rare', desc: 'Healing Bonus +15%/+30%/+45% and shielded allies gain Energy Charge +15%.', tiers: [15, 30, 45] },
-  { id: 'ARCANA_03', number: 'III', name: 'The Empress', rarity: 'Common', desc: 'Team Max HP +20% and restore 15% / 30% / 50% HP upon clearing each floor.', tiers: [15, 30, 50] },
-  { id: 'ARCANA_04', number: 'IV', name: 'The Emperor', rarity: 'Common', desc: 'Frontline allies gain DEF +20%/+35%/+50% and take 20% less AoE damage.', tiers: [20, 35, 50] },
-  { id: 'ARCANA_05', number: 'V', name: 'The Hierophant', rarity: 'Rare', desc: 'Gambit Slot 1 & Slot 2 Tactical Chain skills deal +20%/+30%/+50% bonus DMG/Heal.', tiers: [20, 30, 50] },
-  { id: 'ARCANA_06', number: 'VI', name: 'The Lovers', rarity: 'Epic', desc: 'Elemental Resonance and Reaction DMG increased by +40% / +80% / +130%.', tiers: [40, 80, 130] },
-  { id: 'ARCANA_07', number: 'VII', name: 'The Chariot', rarity: 'Common', desc: 'Team SPD +12% / +20% / +35%.', tiers: [12, 20, 35] },
-  { id: 'ARCANA_08', number: 'VIII', name: 'Strength', rarity: 'Common', desc: 'Team Break Power +20% / +35% / +60% for faster Boss Stagger depletion.', tiers: [20, 35, 60] },
-  { id: 'ARCANA_09', number: 'IX', name: 'The Hermit', rarity: 'Rare', desc: 'Frontline gains 20% / 25% / 45% Max HP Shield at wave start and reflects 20% DMG.', tiers: [20, 25, 45] },
-  { id: 'ARCANA_10', number: 'X', name: 'Wheel of Fortune', rarity: 'Rare', desc: 'Team Crit Rate +12%/+15%/+30% and Crit DMG +25%/+40%/+75%.', tiers: [12, 15, 30], secondaryTiers: [25, 40, 75] },
-  { id: 'ARCANA_11', number: 'XI', name: 'Justice', rarity: 'Rare', desc: 'Attacks against Defenseless bosses ignore an additional 15% / 20% / 35% DEF.', tiers: [15, 20, 35] },
-  { id: 'ARCANA_12', number: 'XII', name: 'The Hanged Man', rarity: 'Rare', desc: 'Any hero below 30% HP gains ATK +30% / +50% / +80%.', tiers: [30, 50, 80] },
-  { id: 'ARCANA_13', number: 'XIII', name: 'Death', rarity: 'Epic', desc: 'Deal +20% / +30% / +60% bonus True DMG to enemies below 25% HP.', tiers: [20, 30, 60] },
-  { id: 'ARCANA_14', number: 'XIV', name: 'Temperance', rarity: 'Common', desc: 'Extend the duration of all elemental debuffs on the boss by +1.0s / +1.5s / +2.5s.', tiers: [10, 15, 25] },
-  { id: 'ARCANA_15', number: 'XV', name: 'The Devil', rarity: 'Epic', desc: 'Team ATK +25% / +35% / +60%, but Team Max HP -10%.', tiers: [25, 35, 60] },
-  { id: 'ARCANA_16', number: 'XVI', name: 'The Tower', rarity: 'Epic', desc: 'Breaking 1 Boss Stagger bar triggers a 100% / 150% / 250% Boss ATK explosion.', tiers: [100, 150, 250] },
-  { id: 'ARCANA_17', number: 'XVII', name: 'The Star', rarity: 'Rare', desc: 'At battle start, all allies immediately gain +25% / +30% / +60% Ultimate Energy.', tiers: [25, 30, 60] },
-  { id: 'ARCANA_18', number: 'XVIII', name: 'The Moon', rarity: 'Rare', desc: 'Backline bypass and piercing attacks deal +25% / +40% / +70% bonus DMG.', tiers: [25, 40, 70] },
-  { id: 'ARCANA_19', number: 'XIX', name: 'The Sun', rarity: 'Common', desc: 'Team ATK +15% / +25% / +45% and Basic Attacks have 20% chance to inflict Burn.', tiers: [15, 25, 45] },
-  { id: 'ARCANA_20', number: 'XX', name: 'Judgement', rarity: 'Epic', desc: 'While Boss is Staggered, all allies deal +35% / +60% / +100% bonus DMG.', tiers: [35, 60, 100] },
-  { id: 'ARCANA_21', number: 'XXI', name: 'The World', rarity: 'Epic', desc: 'Casting an Ultimate has 25% / 35% / 60% chance to immediately refund 50% Energy.', tiers: [25, 35, 60] },
+  { id: 'ARCANA_00', number: '0', name: 'The Fool', rarity: 'Epic', artUrl: '/assets/tarot/arcana_00.webp', desc: 'Grants +40% Team ATK, Crit Rate, & Break Power for the next 5 Spire floors.', value: 40, tiers: [40, 40, 40] },
+  { id: 'ARCANA_01', number: 'I', name: 'The Magician', rarity: 'Rare', artUrl: '/assets/tarot/arcana_01.webp', desc: 'Team Effect Hit Rate +25% and Elemental Reaction DMG +45% for 5 floors.', value: 25, secondaryValue: 45, tiers: [25, 25, 25], secondaryTiers: [45, 45, 45] },
+  { id: 'ARCANA_02', number: 'II', name: 'The High Priestess', rarity: 'Rare', artUrl: '/assets/tarot/arcana_02.webp', desc: 'Healing Bonus +35% and shielded allies gain Energy Charge +20% for 5 floors.', value: 35, tiers: [35, 35, 35] },
+  { id: 'ARCANA_03', number: 'III', name: 'The Empress', rarity: 'Common', artUrl: '/assets/tarot/arcana_03.webp', desc: 'Team Max HP +25% and restore 35% HP upon clearing each floor for 5 floors.', value: 35, tiers: [35, 35, 35] },
+  { id: 'ARCANA_04', number: 'IV', name: 'The Emperor', rarity: 'Common', artUrl: '/assets/tarot/arcana_04.webp', desc: 'Frontline allies gain DEF +40% and take 20% less AoE damage for 5 floors.', value: 40, tiers: [40, 40, 40] },
+  { id: 'ARCANA_05', number: 'V', name: 'The Hierophant', rarity: 'Rare', artUrl: '/assets/tarot/arcana_05.webp', desc: 'Gambit Slot 1 & Slot 2 Tactical Chain skills deal +35% bonus DMG/Heal for 5 floors.', value: 35, tiers: [35, 35, 35] },
+  { id: 'ARCANA_06', number: 'VI', name: 'The Lovers', rarity: 'Epic', artUrl: '/assets/tarot/arcana_06.webp', desc: 'Elemental Resonance and Reaction DMG increased by +85% for 5 floors.', value: 85, tiers: [85, 85, 85] },
+  { id: 'ARCANA_07', number: 'VII', name: 'The Chariot', rarity: 'Common', artUrl: '/assets/tarot/arcana_07.webp', desc: 'Team SPD +24% for the next 5 Spire floors.', value: 24, tiers: [24, 24, 24] },
+  { id: 'ARCANA_08', number: 'VIII', name: 'Strength', rarity: 'Common', artUrl: '/assets/tarot/arcana_08.webp', desc: 'Team Break Power +40% for faster Boss Stagger depletion for 5 floors.', value: 40, tiers: [40, 40, 40] },
+  { id: 'ARCANA_09', number: 'IX', name: 'The Hermit', rarity: 'Rare', artUrl: '/assets/tarot/arcana_09.webp', desc: 'Frontline gains 30% Max HP Shield at wave start and reflects 20% DMG for 5 floors.', value: 30, tiers: [30, 30, 30] },
+  { id: 'ARCANA_10', number: 'X', name: 'Wheel of Fortune', rarity: 'Rare', artUrl: '/assets/tarot/arcana_10.webp', desc: 'Team Crit Rate +20% and Crit DMG +50% for the next 5 Spire floors.', value: 20, secondaryValue: 50, tiers: [20, 20, 20], secondaryTiers: [50, 50, 50] },
+  { id: 'ARCANA_11', number: 'XI', name: 'Justice', rarity: 'Rare', artUrl: '/assets/tarot/arcana_11.webp', desc: 'Attacks against Defenseless bosses ignore an additional 25% DEF for 5 floors.', value: 25, tiers: [25, 25, 25] },
+  { id: 'ARCANA_12', number: 'XII', name: 'The Hanged Man', rarity: 'Rare', artUrl: '/assets/tarot/arcana_12.webp', desc: 'Any hero below 40% HP gains ATK +55% for the next 5 Spire floors.', value: 55, tiers: [55, 55, 55] },
+  { id: 'ARCANA_13', number: 'XIII', name: 'Death', rarity: 'Epic', artUrl: '/assets/tarot/arcana_13.webp', desc: 'Deal +40% bonus True DMG to enemies below 25% HP for 5 floors.', value: 40, tiers: [40, 40, 40] },
+  { id: 'ARCANA_14', number: 'XIV', name: 'Temperance', rarity: 'Common', artUrl: '/assets/tarot/arcana_14.webp', desc: 'Extend the duration of all elemental debuffs on the boss by +2.0s for 5 floors.', value: 20, tiers: [20, 20, 20] },
+  { id: 'ARCANA_15', number: 'XV', name: 'The Devil', rarity: 'Epic', artUrl: '/assets/tarot/arcana_15.webp', desc: 'Team ATK +45%, but Team Max HP -10% for the next 5 Spire floors.', value: 45, tiers: [45, 45, 45] },
+  { id: 'ARCANA_16', number: 'XVI', name: 'The Tower', rarity: 'Epic', artUrl: '/assets/tarot/arcana_16.webp', desc: 'Breaking 1 Boss Stagger bar triggers a 180% Boss ATK explosion for 5 floors.', value: 180, tiers: [180, 180, 180] },
+  { id: 'ARCANA_17', number: 'XVII', name: 'The Star', rarity: 'Rare', artUrl: '/assets/tarot/arcana_17.webp', desc: 'At battle start, all allies immediately gain +40% Ultimate Energy for 5 floors.', value: 40, tiers: [40, 40, 40] },
+  { id: 'ARCANA_18', number: 'XVIII', name: 'The Moon', rarity: 'Rare', artUrl: '/assets/tarot/arcana_18.webp', desc: 'Backline bypass and piercing attacks deal +45% bonus DMG for 5 floors.', value: 45, tiers: [45, 45, 45] },
+  { id: 'ARCANA_19', number: 'XIX', name: 'The Sun', rarity: 'Common', artUrl: '/assets/tarot/arcana_19.webp', desc: 'Team ATK +30% and Basic Attacks have 20% chance to inflict Burn for 5 floors.', value: 30, tiers: [30, 30, 30] },
+  { id: 'ARCANA_20', number: 'XX', name: 'Judgement', rarity: 'Epic', artUrl: '/assets/tarot/arcana_20.webp', desc: 'While Boss is Staggered, all allies deal +65% bonus DMG for 5 floors.', value: 65, tiers: [65, 65, 65] },
+  { id: 'ARCANA_21', number: 'XXI', name: 'The World', rarity: 'Epic', artUrl: '/assets/tarot/arcana_21.webp', desc: 'Casting an Ultimate has 40% chance to immediately refund 50% Energy for 5 floors.', value: 40, tiers: [40, 40, 40] },
 ]);
+

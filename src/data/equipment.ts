@@ -6,11 +6,12 @@
  * 3 Weekly Key Gear Domains, and 22 Major Arcana Tarot Blessings.
  */
 
-import { MAJOR_ARCANA_TAROT, MajorArcanaTarotSpec } from '../config/constants';
+import { MAJOR_ARCANA_TAROT, MajorArcanaTarotSpec, RoleType, UI_ICONS } from '../config/constants';
 import { GRAND_CONSTELLATIONS } from './constellations';
 import { RESONATORS } from './resonators';
 
 export type GearSlot = 'Weapon' | 'Armor' | 'Ring I' | 'Ring II' | 'Core Sigil';
+export type WeaponRole = 'MELEE' | 'RANGED' | 'MAGIC';
 
 export const EQUIPMENT_SLOTS = Object.freeze({
   WEAPON: 'Weapon' as GearSlot,
@@ -132,6 +133,8 @@ export interface GearItem {
   name: string;
   slot: GearSlot;
   set: SetId;
+  weaponRole?: WeaponRole;
+  iconUrl?: string;
   isExoticSigil?: boolean;
   sigilTrait?: SigilCoreTraitSpec;
   level: number; // 0 to 15
@@ -141,6 +144,69 @@ export interface GearItem {
   baseFlatStat?: number;
   substats: SubstatLine[];
   equippedBy?: string;
+}
+
+const SET_ASSET_SLUG_MAP: Readonly<Record<SetId, string>> = Object.freeze({
+  'Starfall Executioner': 'starfall',
+  'Astral Nexus': 'astral',
+  Eclipse: 'eclipse',
+  Overload: 'overload',
+  Titan: 'titan',
+  Volatus: 'volatus',
+  'Radiant Dawn': 'radiant',
+  Voidweaver: 'voidweaver',
+});
+
+export function getHeroAllowedWeaponRole(role: RoleType): WeaponRole {
+  if (role === 'Ranged DPS') return 'RANGED';
+  if (role === 'Support & Healer' || role === 'Debuffer') return 'MAGIC';
+  return 'MELEE';
+}
+
+export function getWeaponRoleLabel(weaponRole?: WeaponRole): string {
+  if (weaponRole === 'RANGED') return 'Ranged DPS Only';
+  if (weaponRole === 'MAGIC') return 'Healer / Debuffer Only';
+  return 'Melee / Tank Only';
+}
+
+export function getWeaponRoleBadgeIconUrl(weaponRole?: WeaponRole): string {
+  if (weaponRole === 'RANGED') return UI_ICONS.role['Ranged DPS'];
+  if (weaponRole === 'MAGIC') return UI_ICONS.role['Support & Healer'];
+  return UI_ICONS.role['Melee DPS'];
+}
+
+export function canHeroEquipGear(heroRole: RoleType, gear: GearItem): boolean {
+  if (gear.slot !== 'Weapon') return true;
+  const requiredWeaponRole = gear.weaponRole || 'MELEE';
+  return getHeroAllowedWeaponRole(heroRole) === requiredWeaponRole;
+}
+
+export function getGearIconUrl(
+  set: SetId,
+  slot: GearSlot,
+  weaponRole?: WeaponRole,
+  sigilTraitId?: string
+): string {
+  if (slot === 'Core Sigil') {
+    if (sigilTraitId === 'TRAIT_AETHERIAL_HEART') return '/assets/gear/sigil_aetherial_heart.webp';
+    if (sigilTraitId === 'TRAIT_CATACLYSMIC_CORE') return '/assets/gear/sigil_cataclysmic_core.webp';
+    if (sigilTraitId === 'TRAIT_IMMORTAL_BULWARK') return '/assets/gear/sigil_immortal_bulwark.webp';
+    return '/assets/gear/sigil_chrono_sprint.webp';
+  }
+  const slug = SET_ASSET_SLUG_MAP[set] || 'starfall';
+  if (slot === 'Weapon') {
+    if (weaponRole === 'RANGED') return `/assets/gear/${slug}_weapon_ranged.webp`;
+    if (weaponRole === 'MAGIC') return `/assets/gear/${slug}_weapon_magic.webp`;
+    return `/assets/gear/${slug}_weapon_melee.webp`;
+  }
+  if (slot === 'Armor') {
+    return `/assets/gear/${slug}_armor.webp`;
+  }
+  return `/assets/gear/${slug}_ring.webp`;
+}
+
+export function getGearItemIconUrl(gear: GearItem): string {
+  return getGearIconUrl(gear.set, gear.slot, gear.weaponRole, gear.sigilTrait?.id);
 }
 
 export function rollRandomSubstat(excludeKeys: StatKey[] = []): SubstatLine {
@@ -458,13 +524,17 @@ export function createInitialGearInventory(): GearItem[] {
     const set = defaultSets[idx % defaultSets.length];
     const baseLv = idx < 6 ? 3 : 0;
     const trait = SIGIL_CORE_TRAITS[idx % SIGIL_CORE_TRAITS.length];
+    const wRole = getHeroAllowedWeaponRole(hero.role);
+    const wSuffix = wRole === 'RANGED' ? 'Bow' : wRole === 'MAGIC' ? 'Staff' : 'Blade';
 
     items.push(
       {
         id: `G_${hero.id}_W`,
-        name: `${set} Blade`,
+        name: `${set} ${wSuffix}`,
         slot: 'Weapon',
         set,
+        weaponRole: wRole,
+        iconUrl: getGearIconUrl(set, 'Weapon', wRole),
         level: baseLv,
         failStackCount: 0,
         mainStatKey: 'ATK%',
@@ -478,6 +548,7 @@ export function createInitialGearInventory(): GearItem[] {
         name: `${set} Cuirass`,
         slot: 'Armor',
         set,
+        iconUrl: getGearIconUrl(set, 'Armor'),
         level: baseLv,
         failStackCount: 0,
         mainStatKey: 'DEF%',
@@ -491,6 +562,7 @@ export function createInitialGearInventory(): GearItem[] {
         name: `${set} Signet I`,
         slot: 'Ring I',
         set,
+        iconUrl: getGearIconUrl(set, 'Ring I'),
         level: baseLv,
         failStackCount: 0,
         mainStatKey: 'CRIT RATE%',
@@ -503,6 +575,7 @@ export function createInitialGearInventory(): GearItem[] {
         name: `${set} Signet II`,
         slot: 'Ring II',
         set,
+        iconUrl: getGearIconUrl(set, 'Ring II'),
         level: baseLv,
         failStackCount: 0,
         mainStatKey: 'CRIT DMG%',
@@ -515,6 +588,7 @@ export function createInitialGearInventory(): GearItem[] {
         name: `Exotic ${trait.name} Sigil`,
         slot: 'Core Sigil',
         set,
+        iconUrl: getGearIconUrl(set, 'Core Sigil', undefined, trait.id),
         isExoticSigil: true,
         sigilTrait: trait,
         level: baseLv,

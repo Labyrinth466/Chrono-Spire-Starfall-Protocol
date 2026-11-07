@@ -17,12 +17,16 @@ import {
   ReactionType,
   REGIONS,
   RoleType,
+  TAROT_CARD_BACK_URL,
+  UI_ICONS,
 } from '../config/constants';
 
 export {
   ELEMENT_META,
   FORMATIONS,
   getFormationRowBonuses,
+  TAROT_CARD_BACK_URL,
+  UI_ICONS,
 };
 export type {
   DebuffType,
@@ -58,6 +62,7 @@ export interface SkillSpec {
     | 'ALL_AOE'
     | 'BACKLINE_BYPASS'
     | 'LOWEST_HP_ENEMY'
+    | 'LOWEST_HP_ALLY'
     | 'TEAM_HEAL_AOE'
     | 'BOSS_MAIN';
   cooldown: number;
@@ -65,6 +70,16 @@ export interface SkillSpec {
   multLv10: number;
   hits?: number;
   isHeal?: boolean;
+  cleanseDebuffs?: boolean;
+  shieldMaxHpPct?: number;
+  frostImmortalitySec?: number;
+  regenMaxHpPctPerSec?: number;
+  allyAtkBuffPct?: number;
+  allyCritDmgBuffPct?: number;
+  allySpdBuffPct?: number;
+  allyDefBuffPct?: number;
+  allyEffResBuffPct?: number;
+  overhealToShieldMaxHpPct?: number;
   breakPower: number;
   breakBp: number;
   debuff?: DebuffType;
@@ -178,7 +193,7 @@ function makeSkill(
     name,
     targetDesc,
     targetRule,
-    cooldown: type === 'Active' ? 7.0 : cooldown,
+    cooldown: type === 'Active' ? (cooldown > 0 ? cooldown : 7.0) : cooldown,
     multLv1,
     multLv10,
     breakPower: breakBp,
@@ -972,6 +987,169 @@ export const RESONATORS: readonly ResonatorData[] = Object.freeze([
   }),
 
   // =========================================================================
+  // SPECIALIZED SINGLE-TARGET BURST & FULL-PARTY AOE HEALERS (H19 - H22)
+  // =========================================================================
+  createResonator({
+    id: 'H19',
+    name: 'Seraphina Vale',
+    title: 'Saintess of the Glacial Basilica',
+    rarity: 'SSR',
+    element: ELEMENTS.CRYO,
+    regionId: 'Region 4',
+    regionName: REGIONS.FROSTBOUND_TUNDRA,
+    regionLore: 'High priestess of the Frostbound Basilica whose cryo-miracles pull dying vanguards back from the brink.',
+    role: COMBAT_ROLES.SUPPORT_HEALER,
+    recommendedRow: 'Back',
+    highlight: 'Single-Target Burst Lifesaver: heals lowest-%HP ally (240%→360% ATK), cleanses debuffs, grants 20% HP Ice Shield & Frost Immortality.',
+    baseStats: {
+      hpLv1: 1460, hpLv100: 20440,
+      atkLv1: 152, atkLv100: 2128,
+      defLv1: 98, defLv100: 1372,
+      critRate: 10, critDmg: 150,
+      effectHitRate: 15, effectRes: 20, healingBonus: 25,
+      spd: 112, breakPower: 105, energyCharge: 120,
+    },
+    star5BonusDesc: 'Healing Bonus +25%, Energy Charge +20%',
+    passiveName: 'Glacial Lifeblood',
+    passive3Star: 'Healing Bonus +15%',
+    passive4Star: 'Single-target heals grant +20% DEF for 4.0s',
+    passive5Star: 'Ultimate grants 20% Max HP Ice Shield & Freeze immunity',
+    defaultGambit1: 'ALLY_HP_BELOW_50',
+    defaultGambit2: 'TARGET_HAS_SHOCK',
+    gambitPresets: [
+      { slot: 1, condition: 'ALLY_HP_BELOW_50', action: 'Miracle Aegis', desc: 'Emergency 280%→420% single-target heal + Frost Immortality (2.5s)' },
+      { slot: 2, condition: 'TARGET_HAS_SHOCK', action: 'Miracle Aegis', desc: 'Save lowest-HP ally and trigger SUPERCONDUCT' },
+    ],
+    colors: { primary: '#38bdf8', secondary: '#e0f2fe', hair: '#f0f9ff', weapon: '#7dd3fc', glow: 'rgba(56, 189, 248, 0.55)' },
+    skills: {
+      basic: makeSkill('Basic', 'Crystalline Grace', 'Frontmost Enemy', 'FRONT', 0, 96, 128, 15, 2.0, 15, 15, 'Fires a crystalline frost Bolt that chills the target', { debuff: 'Slow' }),
+      active: makeSkill('Active', 'Cryo Salvation', 'Lowest %HP Ally (Single-Target Burst Heal)', 'LOWEST_HP_ALLY', 7.5, 240, 360, 25, 2.0, 25, 40, 'Burst heals lowest-%HP ally (240%→360% ATK), cleanses all debuffs & grants 20% Max HP Ice Shield', { isHeal: true, cleanseDebuffs: true, shieldMaxHpPct: 20 }),
+      chain: makeSkill('Chain', 'Miracle Aegis', 'Lowest %HP Ally Emergency Rescue', 'LOWEST_HP_ALLY', 10.0, 280, 420, 60, 4.0, 100, 100, 'Emergency 280%→420% ATK single-target heal + Frost Immortality (HP cannot drop below 1 for 2.5s) & DEF +40%', { isHeal: true, cleanseDebuffs: true, frostImmortalitySec: 2.5, allyDefBuffPct: 40, reactionTrigger: 'SUPERCONDUCT' }),
+      ultimate: makeSkill('Ultimate', 'Absolute Zero Sanctuary', 'Lowest %HP Ally Heal + All Enemies Freeze', 'LOWEST_HP_ALLY', 0, 350, 520, 140, 2.0, 65, 80, 'Restores 350%→520% ATK HP to the most critical ally and Freezes all enemies for 2.0s', { isHeal: true, cleanseDebuffs: true, shieldMaxHpPct: 25, debuff: 'Freeze' }),
+    },
+  }),
+
+  createResonator({
+    id: 'H20',
+    name: 'Sylvanus Faye',
+    title: 'Archdruid of the World Tree',
+    rarity: 'SSR',
+    element: ELEMENTS.WIND,
+    regionId: 'Region 1',
+    regionName: REGIONS.VERDANT_WILDS,
+    regionLore: 'Ancient wind-sage of the World Tree whose emerald chorus mends an entire 5-hero squad at once.',
+    role: COMBAT_ROLES.SUPPORT_HEALER,
+    recommendedRow: 'Back',
+    highlight: 'Full-Party AoE Sanctuary Healer: heals all 5 allies, applies 6% HP/s Regen, buffs SPD +15%, and converts Overheal into 25% HP Shield.',
+    baseStats: {
+      hpLv1: 1520, hpLv100: 21280,
+      atkLv1: 148, atkLv100: 2072,
+      defLv1: 102, defLv100: 1428,
+      critRate: 10, critDmg: 150,
+      effectHitRate: 10, effectRes: 20, healingBonus: 25,
+      spd: 115, breakPower: 100, energyCharge: 120,
+    },
+    star5BonusDesc: 'Healing Bonus +25%, Team SPD +10',
+    passiveName: 'Canopy of Eternal Spring',
+    passive3Star: 'Healing Bonus +15%',
+    passive4Star: 'Party AoE heals grant +12% SPD',
+    passive5Star: 'Overhealing converts into a 25% Max HP barrier',
+    defaultGambit1: 'ALLY_HP_BELOW_50',
+    defaultGambit2: 'TARGET_HAS_BURN',
+    gambitPresets: [
+      { slot: 1, condition: 'ALLY_HP_BELOW_50', action: 'Gale of Renewal', desc: 'Heal all 5 allies (165%→245% ATK) & grant Team SPD +15%' },
+      { slot: 2, condition: 'TARGET_HAS_BURN', action: 'Gale of Renewal', desc: 'Party AoE heal & detonate FIRESTORM (+10 Team Energy)' },
+    ],
+    colors: { primary: '#10b981', secondary: '#a7f3d0', hair: '#d1fae5', weapon: '#34d399', glow: 'rgba(16, 185, 129, 0.55)' },
+    skills: {
+      basic: makeSkill('Basic', 'Verdant Breeze', 'Frontmost Enemy', 'FRONT', 0, 95, 125, 15, 4.0, 10, 10, 'Sends a slicing emerald breeze that inflicts Bleed', { debuff: 'Bleed' }),
+      active: makeSkill('Active', 'Emerald Chorus', 'All 5 Allies (Full-Party AoE Heal)', 'TEAM_HEAL_AOE', 8.0, 150, 225, 30, 4.0, 35, 55, 'Heals all 5 allies simultaneously (150%→225% ATK) and grants Regen (6% Max HP/s for 4.0s)', { isHeal: true, regenMaxHpPctPerSec: 6 }),
+      chain: makeSkill('Chain', 'Gale of Renewal', 'All 5 Allies AoE Heal + SPD Buff', 'TEAM_HEAL_AOE', 11.0, 165, 245, 65, 4.0, 100, 100, 'Heals all 5 allies (165%→245% ATK), grants Team SPD +15%, and triggers FIRESTORM', { isHeal: true, allySpdBuffPct: 15, reactionTrigger: 'FIRESTORM' }),
+      ultimate: makeSkill('Ultimate', 'World Tree Benediction', 'All 5 Allies Grand AoE Heal + Overheal Shield', 'TEAM_HEAL_AOE', 0, 220, 330, 135, 4.0, 65, 80, 'Grand party heal (220%→330% ATK), cleanses all ally debuffs & converts Overheal into up to 25% Max HP Shield', { isHeal: true, cleanseDebuffs: true, overhealToShieldMaxHpPct: 25, shieldMaxHpPct: 18 }),
+    },
+  }),
+
+  createResonator({
+    id: 'H21',
+    name: 'Carmilla Vane',
+    title: 'Crimson Chalice of the Blood Flame',
+    rarity: 'SSR',
+    element: ELEMENTS.FIRE,
+    regionId: 'Region 2',
+    regionName: REGIONS.CENTRAL_IMPERIUM,
+    regionLore: 'Noble blood-flame alchemist who infuses wounded champions with searing vitality and offensive fury.',
+    role: COMBAT_ROLES.SUPPORT_HEALER,
+    recommendedRow: 'Back',
+    highlight: 'Single-Target Blood-Flame Healer: heals lowest-%HP ally (260%→390% ATK) and grants ATK +35% & Crit DMG +40%.',
+    baseStats: {
+      hpLv1: 1420, hpLv100: 19880,
+      atkLv1: 158, atkLv100: 2212,
+      defLv1: 94, defLv100: 1316,
+      critRate: 12, critDmg: 160,
+      effectHitRate: 10, effectRes: 15, healingBonus: 22,
+      spd: 110, breakPower: 105, energyCharge: 115,
+    },
+    star5BonusDesc: 'Healing Bonus +20%, Ally ATK Buff +15%',
+    passiveName: 'Sanguine Ignition',
+    passive3Star: 'Healing Bonus +15%',
+    passive4Star: 'Healed target gains +35% ATK & +40% Crit DMG',
+    passive5Star: 'Ultimate grants +20 Ultimate Energy to healed ally',
+    defaultGambit1: 'ALLY_HP_BELOW_50',
+    defaultGambit2: 'TARGET_HAS_FREEZE',
+    gambitPresets: [
+      { slot: 1, condition: 'ALLY_HP_BELOW_50', action: 'Crimson Transfusion', desc: 'Burst heal lowest-%HP ally (260%→390% ATK) + ATK +35% & Crit DMG +40%' },
+      { slot: 2, condition: 'TARGET_HAS_FREEZE', action: 'Crimson Transfusion', desc: 'Heal ally and detonate Freeze into MELTDOWN' },
+    ],
+    colors: { primary: '#ef4444', secondary: '#fda4af', hair: '#fecdd3', weapon: '#f43f5e', glow: 'rgba(239, 68, 68, 0.55)' },
+    skills: {
+      basic: makeSkill('Basic', 'Sanguine Spark', 'Frontmost Enemy', 'FRONT', 0, 98, 130, 15, 4.0, 10, 10, 'Searing blood-flame bolt that scorches the target', { debuff: 'Burn' }),
+      active: makeSkill('Active', 'Chalice of Vitality', 'Lowest %HP Ally (Single-Target Heal & Buff)', 'LOWEST_HP_ALLY', 7.0, 260, 390, 30, 4.0, 35, 55, 'Burst heals lowest-%HP ally (260%→390% ATK) and grants ATK +35% & Crit DMG +40% for 5.0s', { isHeal: true, allyAtkBuffPct: 35, allyCritDmgBuffPct: 40 }),
+      chain: makeSkill('Chain', 'Crimson Transfusion', 'Lowest %HP Ally Heal + Meltdown Detonator', 'LOWEST_HP_ALLY', 9.5, 275, 410, 65, 4.0, 100, 100, 'Restores 275%→410% ATK HP to lowest-%HP ally, buffs ATK +35% & Crit DMG +40%, and triggers MELTDOWN', { isHeal: true, allyAtkBuffPct: 35, allyCritDmgBuffPct: 40, reactionTrigger: 'MELTDOWN' }),
+      ultimate: makeSkill('Ultimate', 'Sovereign Blood Moon Covenant', 'Lowest %HP Ally Burst Heal + All Enemies Burn', 'LOWEST_HP_ALLY', 0, 360, 540, 140, 4.0, 65, 80, 'Restores 360%→540% ATK HP to critical ally with ATK +35% / Crit DMG +40% and scorches all foes', { isHeal: true, allyAtkBuffPct: 35, allyCritDmgBuffPct: 40, debuff: 'Burn' }),
+    },
+  }),
+
+  createResonator({
+    id: 'H22',
+    name: 'Celeste Noel',
+    title: 'Snowflake Choir Cantor',
+    rarity: 'SR',
+    element: ELEMENTS.CRYO,
+    regionId: 'Region 4',
+    regionName: REGIONS.FROSTBOUND_TUNDRA,
+    regionLore: 'Choir cantor of the Northern Sanctuary whose soothing frost hymns mend the whole party and ward off curses.',
+    role: COMBAT_ROLES.SUPPORT_HEALER,
+    recommendedRow: 'Back',
+    highlight: 'SR Full-Party AoE Healer: heals all 5 allies (130%→195% ATK), cleanses debuffs, and buffs Effect RES +25%.',
+    baseStats: {
+      hpLv1: 1280, hpLv100: 17920,
+      atkLv1: 126, atkLv100: 1764,
+      defLv1: 86, defLv100: 1204,
+      critRate: 8, critDmg: 150,
+      effectHitRate: 12, effectRes: 20, healingBonus: 18,
+      spd: 106, breakPower: 100, energyCharge: 115,
+    },
+    star5BonusDesc: 'Healing Bonus +18%, Team Effect RES +25%',
+    passiveName: 'Hymn of Pure Snow',
+    passive3Star: 'Healing Bonus +12%',
+    passive4Star: 'Team Effect RES +25%',
+    passive5Star: 'Party heals grant 10% Max HP Frost Ward',
+    defaultGambit1: 'ALLY_HP_BELOW_50',
+    defaultGambit2: 'TARGET_HAS_SHOCK',
+    gambitPresets: [
+      { slot: 1, condition: 'ALLY_HP_BELOW_50', action: 'Winter Choir Carol', desc: 'Heal all 5 allies (130%→195% ATK) & buff Effect RES +25%' },
+      { slot: 2, condition: 'TARGET_HAS_SHOCK', action: 'Winter Choir Carol', desc: 'Party AoE heal & trigger SUPERCONDUCT' },
+    ],
+    colors: { primary: '#38bdf8', secondary: '#bae6fd', hair: '#e0f2fe', weapon: '#0284c7', glow: 'rgba(56, 189, 248, 0.48)' },
+    skills: {
+      basic: makeSkill('Basic', 'Snowbell Note', 'Frontmost Enemy', 'FRONT', 0, 90, 118, 15, 2.0, 15, 15, 'Chimes a frost bell that slows the enemy', { debuff: 'Slow' }),
+      active: makeSkill('Active', 'Aurora Lullaby', 'All 5 Allies (Full-Party AoE Heal)', 'TEAM_HEAL_AOE', 7.0, 130, 195, 25, 2.0, 25, 40, 'Heals all 5 allies (130%→195% ATK) and buffs Team Effect RES +25% for 4.0s', { isHeal: true, allyEffResBuffPct: 25 }),
+      chain: makeSkill('Chain', 'Winter Choir Carol', 'All 5 Allies AoE Heal + Superconduct', 'TEAM_HEAL_AOE', 9.5, 145, 215, 60, 4.0, 100, 100, 'Heals all 5 allies (145%→215% ATK), grants Team Effect RES +25%, and triggers SUPERCONDUCT', { isHeal: true, allyEffResBuffPct: 25, reactionTrigger: 'SUPERCONDUCT' }),
+      ultimate: makeSkill('Ultimate', 'Starlight Snowfall Oratorio', 'All 5 Allies AoE Heal + Shield', 'TEAM_HEAL_AOE', 0, 200, 300, 125, 2.0, 65, 80, 'Heals all 5 allies (200%→300% ATK), cleanses 1 debuff & grants 12% Max HP Shield', { isHeal: true, cleanseDebuffs: true, shieldMaxHpPct: 12, allyEffResBuffPct: 25 }),
+    },
+  }),
+
+  // =========================================================================
   // STARTER R RESONATORS (R01 - R05 — 1★ Blue Frame Starter Squad)
   // =========================================================================
   createResonator({
@@ -1206,3 +1384,79 @@ export function interpolateSkillProc(skill: SkillSpec, skillLv: number): number 
   }
   return Math.round(skill.procLv1 + ((skill.procLv10 - skill.procLv1) * (clamped - 1)) / 9);
 }
+
+// ============================================================================
+// 10-STAR CHARACTER SHARD ASCENSION SYSTEM (5 GOLD STARS ➔ 5 AWAKENED STARS)
+// ============================================================================
+export const MAX_HERO_STARS = 10;
+
+/**
+ * Required character shards to ascend from `currentStars` to `currentStars + 1`:
+ * - Gold Stars (1★ ➔ 5★):
+ *   1★➔2★: 20 Shards (+12% Base HP/ATK/DEF)
+ *   2★➔3★: 40 Shards (+15% Base HP/ATK/DEF & Passive Upgrade)
+ *   3★➔4★: 80 Shards (+18% Base HP/ATK/DEF)
+ *   4★➔5★: 120 Shards (+25% Base HP/ATK/DEF & Ultimate Upgrade)
+ * - Awakened Stars (5★ ➔ A5★ / 6★..10★):
+ *   5★➔A1★ (6★): 150 Shards (+20% All Stats)
+ *   A1★➔A2★ (7★): 180 Shards (+22% All Stats)
+ *   A2★➔A3★ (8★): 220 Shards (+25% All Stats)
+ *   A3★➔A4★ (9★): 260 Shards (+28% All Stats)
+ *   A4★➔A5★ (10★): 300 Shards (+35% All Stats)
+ */
+export const ASCENSION_SHARD_COST_TABLE: Readonly<Record<number, number>> = Object.freeze({
+  1: 20,
+  2: 40,
+  3: 80,
+  4: 120,
+  5: 150,
+  6: 180,
+  7: 220,
+  8: 260,
+  9: 300,
+});
+
+export function getAscensionShardCost(currentStars: number): number {
+  return ASCENSION_SHARD_COST_TABLE[currentStars] || 300;
+}
+
+export function getStarStatMultiplier(stars: number): number {
+  const clamped = Math.max(1, Math.min(MAX_HERO_STARS, stars));
+  // Cumulative stat multiplier table matching SSOT v2.3 step bonuses:
+  // 1★: 1.00
+  // 2★: +12% -> 1.12
+  // 3★: +15% -> 1.27
+  // 4★: +18% -> 1.45
+  // 5★: +25% -> 1.70
+  // A1★ (6★): +20% -> 1.90
+  // A2★ (7★): +22% -> 2.12
+  // A3★ (8★): +25% -> 2.37
+  // A4★ (9★): +28% -> 2.65
+  // A5★ (10★): +35% -> 3.00
+  const multTable: Record<number, number> = {
+    1: 1.0,
+    2: 1.12,
+    3: 1.27,
+    4: 1.45,
+    5: 1.7,
+    6: 1.9,
+    7: 2.12,
+    8: 2.37,
+    9: 2.65,
+    10: 3.0,
+  };
+  return multTable[clamped] || 1.0;
+}
+
+export function formatHeroStarLabel(stars: number): string {
+  const clamped = Math.max(1, Math.min(MAX_HERO_STARS, stars));
+  if (clamped <= 5) return `${clamped}★`;
+  return `A${clamped - 5}★`;
+}
+
+export function getDuplicatePullShardAmount(rarity: HeroRarity): number {
+  if (rarity === 'SSR') return 50;
+  if (rarity === 'SR') return 30;
+  return 15;
+}
+

@@ -19,9 +19,11 @@ import {
 import {
   DebuffType,
   ElementType,
+  formatHeroStarLabel,
   GambitConditionSlot1,
   GambitConditionSlot2,
   getResonatorById,
+  getStarStatMultiplier,
   RESONATORS,
   ResonatorData,
 } from '../data/resonators';
@@ -631,7 +633,7 @@ export function computeHeroStats(
   unlockedNodeIds: string[] = []
 ): ComputedStats {
   const lvRatio = (Math.max(1, Math.min(100, prog.level)) - 1) / 99;
-  const starMult = 1 + (prog.stars - 2) * 0.06;
+  const starMult = getStarStatMultiplier(prog.stars);
 
   const baseHp = Math.round((data.hpLv1 + (data.hpLv100 - data.hpLv1) * lvRatio) * starMult);
   const baseAtk = Math.round((data.atkLv1 + (data.atkLv100 - data.atkLv1) * lvRatio) * starMult);
@@ -727,6 +729,18 @@ export function computeHeroStats(
       healingBonus += 15;
       energyCharge += 15;
     }
+  }
+  // Awakened Stars (6★..10★ -> A1★..A5★): All-Stats Bonus
+  if (prog.stars >= 6) {
+    const awakenedTier = Math.min(5, prog.stars - 5);
+    critRate += awakenedTier * 3;
+    critDmg += awakenedTier * 8;
+    breakPower += awakenedTier * 6;
+    energyCharge += awakenedTier * 5;
+    effectHitRate += awakenedTier * 4;
+    effectRes += awakenedTier * 4;
+    healingBonus += awakenedTier * 5;
+    flatSpd += awakenedTier * 3;
   }
 
   // Formation Row Bonus
@@ -962,7 +976,7 @@ export function computeHeroCPBreakdown(
         cp: baseCp,
         pct: Number(((baseCp / sumCp) * 100).toFixed(1)),
         color: '#f59e0b',
-        detail: `Lv.${prog.level} · ${prog.stars}★ Ascension · ${fullStats.rowPosition} Row`,
+        detail: `Lv.${prog.level} · ${formatHeroStarLabel(prog.stars)} Ascension · ${fullStats.rowPosition} Row`,
       },
       {
         category: 'Gear',
@@ -1050,6 +1064,13 @@ export interface CombatHeroUnit {
     critTimer: number;
     breakPct: number;
     breakTimer: number;
+    immortalTimer: number;
+    regenPctPerSec: number;
+    regenTimer: number;
+    spdBonusPct: number;
+    spdTimer: number;
+    critDmgBonusPct: number;
+    critDmgTimer: number;
   };
   x: number;
   y: number;
@@ -1121,6 +1142,20 @@ export interface CutInBannerState {
   element: ElementType;
   primaryColor: string;
   remaining: number;
+}
+
+export interface PhysicalLootDrop {
+  id: number;
+  label: string;
+  rarity: 'R' | 'SR' | 'SSR';
+  iconUrl: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  groundY: number;
+  life: number;
+  maxLife: number;
 }
 
 /**
@@ -1876,7 +1911,7 @@ export function runBalanceSelfChecks(): boolean {
     getRecommendedFloorCP(1) === 8500;
 
   return (
-    RESONATORS.length === 23 &&
+    RESONATORS.length === 27 &&
     Object.keys(ELEMENTAL_REACTION_MATRIX).length === 9 &&
     r4 === 100 &&
     r7 === 100 &&

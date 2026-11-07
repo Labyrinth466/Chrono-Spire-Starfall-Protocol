@@ -4,6 +4,7 @@ import {
   FloatingText,
   HeroAnimState,
   ImpactShockwave,
+  PhysicalLootDrop,
 } from './combatEngine.ts';
 import { ELEMENT_META, RESONATORS, ResonatorData } from '../data/resonators.ts';
 
@@ -769,6 +770,35 @@ export function setZoneParallaxAsset(
   slot[layer] = img;
 }
 
+const ZONE_FOLDER_NAMES = [
+  'zone1_forest',
+  'zone2_mountain',
+  'zone3_cloudsea',
+  'zone4_orbit',
+  'zone5_space',
+];
+
+if (typeof window !== 'undefined') {
+  ZONE_FOLDER_NAMES.forEach((folder, idx) => {
+    setZoneParallaxAsset(idx, 'skyImg', `/assets/backgrounds/${folder}/full_reference.webp`);
+    setZoneParallaxAsset(idx, 'farBgImg', null);
+    setZoneParallaxAsset(idx, 'midArchImg', null);
+    setZoneParallaxAsset(idx, 'floorImg', null);
+  });
+}
+
+const CANVAS_IMAGE_CACHE: Record<string, HTMLImageElement> = {};
+function getCachedCanvasImage(url: string): HTMLImageElement | null {
+  if (!url || typeof window === 'undefined') return null;
+  if (!CANVAS_IMAGE_CACHE[url]) {
+    const img = new Image();
+    img.src = url;
+    CANVAS_IMAGE_CACHE[url] = img;
+  }
+  const cached = CANVAS_IMAGE_CACHE[url];
+  return cached.complete && cached.naturalWidth > 0 ? cached : null;
+}
+
 export function renderBattlefieldCanvas(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -787,7 +817,9 @@ export function renderBattlefieldCanvas(
   maxSegmentBp: number = 100,
   shockwaves: ImpactShockwave[] = [],
   staggerWarningTimer: number = 0,
-  floor: number = 1
+  floor: number = 1,
+  parallaxSpeedMultiplier: number = 1.0,
+  lootDrops: PhysicalLootDrop[] = []
 ) {
   ctx.save();
   if (shakeMag > 0.2) {
@@ -799,14 +831,24 @@ export function renderBattlefieldCanvas(
   const horizonY = Math.round(height * 0.5);
   const zoneIdx = Math.min(4, Math.max(0, Math.floor((Math.max(1, floor) - 1) / 20)));
   const zoneAsset = ZONE_PARALLAX_ASSETS[zoneIdx] || ZONE_PARALLAX_ASSETS[0];
+  const pSpeed = Math.max(0.2, parallaxSpeedMultiplier);
+  const hasFullZoneBg = Boolean(
+    zoneAsset.skyImg && zoneAsset.skyImg.complete && zoneAsset.skyImg.naturalWidth > 0
+  );
 
   // ============================================================================
-  // 1. SKY LAYER (0.1x PARALLAX SPEED) — SWAPPABLE OR PROCEDURAL BY ZONE (0..4)
+  // 1. FULL-CANVAS ZONE ARTWORK (full_reference.webp) OR PROCEDURAL FALLBACK
   // ============================================================================
-  if (zoneAsset.skyImg && zoneAsset.skyImg.complete && zoneAsset.skyImg.naturalWidth > 0) {
-    const scrollX = (time * 12 * 0.1) % width;
-    ctx.drawImage(zoneAsset.skyImg, -scrollX, 0, width, horizonY);
-    ctx.drawImage(zoneAsset.skyImg, width - scrollX, 0, width, horizonY);
+  if (hasFullZoneBg && zoneAsset.skyImg) {
+    const scrollX = pSpeed > 1.05 ? (time * 18 * pSpeed) % width : (time * 4 * pSpeed) % width;
+    ctx.drawImage(zoneAsset.skyImg, -scrollX, 0, width, height);
+    if (scrollX > 0.5) {
+      ctx.drawImage(zoneAsset.skyImg, width - scrollX, 0, width, height);
+    }
+    if (isBerserk) {
+      ctx.fillStyle = 'rgba(225, 29, 72, 0.16)';
+      ctx.fillRect(0, 0, width, height);
+    }
   } else {
     const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY + 20);
     if (isBerserk) {
@@ -841,91 +883,38 @@ export function renderBattlefieldCanvas(
     }
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, width, height);
+  }
 
-    // Drifting Nebula / Atmospheric Glow (0.1x speed)
-    for (let n = 0; n < 3; n++) {
-      const nx = ((n * 380 + time * 12 * 0.1 * (n + 1)) % (width + 300)) - 150;
-      const ny = 58 + n * 38;
-      const nebGrad = ctx.createRadialGradient(nx, ny, 10, nx, ny, 180);
-      const nebCols = [
-        ['rgba(16, 185, 129, 0.14)', 'rgba(56, 189, 248, 0.12)'],
-        ['rgba(56, 189, 248, 0.15)', 'rgba(168, 85, 247, 0.16)'],
-        ['rgba(251, 191, 36, 0.18)', 'rgba(56, 189, 248, 0.13)'],
-        ['rgba(56, 189, 248, 0.16)', 'rgba(129, 140, 248, 0.16)'],
-        ['rgba(192, 132, 252, 0.20)', 'rgba(251, 191, 36, 0.16)'],
-      ][zoneIdx];
-      nebGrad.addColorStop(0, isBerserk ? 'rgba(244, 63, 94, 0.18)' : nebCols[n % 2]);
-      nebGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
-      ctx.fillStyle = nebGrad;
-      ctx.fillRect(nx - 180, ny - 180, 360, 360);
-    }
-
-    // Twinkling Starfield (0.1x speed)
-    ctx.fillStyle = isBerserk ? 'rgba(251, 113, 133, 0.5)' : 'rgba(226, 232, 240, 0.55)';
-    for (let i = 0; i < 42; i++) {
-      const sx = (i * 97 + Math.floor(time * 12 * 0.1)) % width;
-      const sy = (i * 53) % (horizonY - 14);
-      const sz = (i % 3) + 1;
-      ctx.fillRect(sx, sy, sz, sz);
-    }
-
-    // Zone 3 & 4 Special Sky Centerpiece (Planetary Ring / Violet-Gold Black Hole)
-    if (zoneIdx === 3) {
-      // Curved Planetary Horizon & Saturn-like Rings
-      ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.32)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(width * 0.5, horizonY + 180, 260, Math.PI * 1.15, Math.PI * 1.85);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.22)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(width * 0.72, horizonY * 0.42, 78, 18, -0.28, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      ctx.arc(width * 0.72, horizonY * 0.42, 26, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    } else if (zoneIdx === 4) {
-      // Rotating Violet-Gold Singularity Black Hole
-      ctx.save();
-      ctx.translate(Math.round(width * 0.52), Math.round(horizonY * 0.45));
-      ctx.rotate(time * 0.35);
-      for (let r = 0; r < 3; r++) {
-        ctx.strokeStyle = r % 2 === 0 ? 'rgba(251, 191, 36, 0.42)' : 'rgba(192, 132, 252, 0.45)';
-        ctx.lineWidth = 2.5 - r * 0.5;
-        ctx.setLineDash([12, 8]);
-        ctx.beginPath();
-        ctx.arc(0, 0, 42 + r * 22, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#02010a';
-      ctx.beginPath();
-      ctx.arc(0, 0, 28, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fde047';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-    }
+  // Drifting Atmospheric Nebula Glow (0.1x speed, subtle over full_reference)
+  for (let n = 0; n < 3; n++) {
+    const nx = ((n * 380 + time * 12 * 0.1 * (n + 1) * pSpeed) % (width + 300)) - 150;
+    const ny = 58 + n * 38;
+    const nebGrad = ctx.createRadialGradient(nx, ny, 10, nx, ny, 180);
+    const nebCols = [
+      ['rgba(16, 185, 129, 0.10)', 'rgba(56, 189, 248, 0.08)'],
+      ['rgba(56, 189, 248, 0.11)', 'rgba(168, 85, 247, 0.12)'],
+      ['rgba(251, 191, 36, 0.12)', 'rgba(56, 189, 248, 0.09)'],
+      ['rgba(56, 189, 248, 0.12)', 'rgba(129, 140, 248, 0.12)'],
+      ['rgba(192, 132, 252, 0.14)', 'rgba(251, 191, 36, 0.12)'],
+    ][zoneIdx];
+    nebGrad.addColorStop(0, isBerserk ? 'rgba(244, 63, 94, 0.16)' : nebCols[n % 2]);
+    nebGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+    ctx.fillStyle = nebGrad;
+    ctx.fillRect(nx - 180, ny - 180, 360, 360);
   }
 
   // ============================================================================
-  // 2. FAR BG LAYER (0.35x PARALLAX SPEED) — DISTANT LANDSCAPE BY ZONE
+  // 2. FAR BG LAYER (0.35x PARALLAX SPEED) — ONLY WHEN PROCEDURAL FALLBACK
   // ============================================================================
   if (zoneAsset.farBgImg && zoneAsset.farBgImg.complete && zoneAsset.farBgImg.naturalWidth > 0) {
-    const scrollX = (time * 18 * 0.35) % width;
-    ctx.drawImage(zoneAsset.farBgImg, -scrollX, horizonY - 120, width, 125);
-    ctx.drawImage(zoneAsset.farBgImg, width - scrollX, horizonY - 120, width, 125);
-  } else {
+    const scrollX = (time * 18 * 0.35 * pSpeed) % width;
+    ctx.drawImage(zoneAsset.farBgImg, -scrollX, 0, width, height);
+    ctx.drawImage(zoneAsset.farBgImg, width - scrollX, 0, width, height);
+  } else if (!hasFullZoneBg) {
     for (let i = 0; i < 9; i++) {
       const rawX = ((i * 135 - time * 18 * 0.35) % (width + 160));
       const bx = rawX < -80 ? rawX + width + 160 : rawX;
       if (zoneIdx === 0) {
-        // Giant Bioluminescent Pine Silhouettes & Cyan Glowing Mushrooms
         const treeH = 75 + (i % 3) * 24;
         ctx.fillStyle = '#041f1e';
         ctx.beginPath();
@@ -934,13 +923,7 @@ export function renderBattlefieldCanvas(
         ctx.lineTo(bx - 6, horizonY);
         ctx.closePath();
         ctx.fill();
-        // Glowing cyan mushroom cap at base
-        ctx.fillStyle = '#22d3ee';
-        ctx.fillRect(bx + 16, horizonY - 10, 12, 5);
-        ctx.fillStyle = '#0e7490';
-        ctx.fillRect(bx + 20, horizonY - 5, 4, 5);
       } else if (zoneIdx === 1) {
-        // Jagged Snow-Capped Stormcrag Mountain Peaks
         const peakH = 85 + (i % 3) * 28;
         ctx.fillStyle = '#1e293b';
         ctx.beginPath();
@@ -949,148 +932,95 @@ export function renderBattlefieldCanvas(
         ctx.lineTo(bx - 15, horizonY);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#e0f2fe';
-        ctx.beginPath();
-        ctx.moveTo(bx + 35, horizonY - peakH);
-        ctx.lineTo(bx + 52, horizonY - peakH * 0.65);
-        ctx.lineTo(bx + 18, horizonY - peakH * 0.65);
-        ctx.closePath();
-        ctx.fill();
       } else if (zoneIdx === 2) {
-        // Golden Sea of Clouds & Distant Floating Sanctum Islands
         ctx.fillStyle = i % 2 === 0 ? 'rgba(251, 191, 36, 0.25)' : 'rgba(254, 240, 138, 0.18)';
         ctx.fillRect(bx, horizonY - 28 - (i % 3) * 8, 96, 22);
-        if (i % 2 === 0) {
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(bx + 20, horizonY - 68, 44, 24);
-          ctx.fillStyle = '#fde047';
-          ctx.fillRect(bx + 38, horizonY - 60, 8, 12);
-        }
       } else if (zoneIdx === 3) {
-        // Distant Orbital Ring Segments & Star Cruisers / Astrolabe Spires
         const spireH = 60 + (i % 4) * 18;
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(bx + 12, horizonY - spireH, 24, spireH);
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(bx + 21, horizonY - spireH + 8, 6, spireH - 16);
       } else {
-        // Zone 4: Floating Shattered Runic Obelisks in Deep Space
         const floatY = Math.sin(time * 1.8 + i) * 8;
         const obH = 72 + (i % 3) * 22;
         ctx.fillStyle = '#1e1035';
         ctx.fillRect(bx + 10, horizonY - obH + floatY - 12, 28, obH - 12);
-        ctx.fillStyle = '#c084fc';
-        ctx.fillRect(bx + 21, horizonY - obH + floatY, 6, obH - 28);
       }
     }
   }
 
   // ============================================================================
-  // 3. MID ARCH & WEATHER PARTICLES (0.65x PARALLAX SPEED)
+  // 3. ATMOSPHERIC WEATHER & PARALLAX PARTICLES (0.65x PARALLAX SPEED)
   // ============================================================================
   if (zoneAsset.midArchImg && zoneAsset.midArchImg.complete && zoneAsset.midArchImg.naturalWidth > 0) {
-    const scrollX = (time * 18 * 0.65) % width;
-    ctx.drawImage(zoneAsset.midArchImg, -scrollX, horizonY - 115, width, 120);
-    ctx.drawImage(zoneAsset.midArchImg, width - scrollX, horizonY - 115, width, 120);
-  } else {
-    for (let i = 0; i < 7; i++) {
-      const parallaxX = ((i * 165 - time * 18 * 0.65) % (width + 160));
-      const px = parallaxX < -80 ? parallaxX + width + 160 : parallaxX;
-      const pillarH = 92 + (i % 3) * 26;
-      const py = horizonY - pillarH;
+    const scrollX = (time * 18 * 0.65 * pSpeed) % width;
+    ctx.drawImage(zoneAsset.midArchImg, -scrollX, 0, width, height);
+    ctx.drawImage(zoneAsset.midArchImg, width - scrollX, 0, width, height);
+  }
 
-      // Zone-themed Midground Architecture
-      ctx.fillStyle =
-        zoneIdx === 0 ? '#062229' :
-        zoneIdx === 1 ? '#111c35' :
-        zoneIdx === 2 ? '#1e293b' :
-        zoneIdx === 3 ? '#091326' : '#17092b';
-      ctx.fillRect(px, py, 36, pillarH);
-      ctx.fillRect(px + 6, py - 10, 22, 10);
-
-      // Glowing Conduit / Brazier per Zone
-      const conduitColor = isBerserk
-        ? 'rgba(244, 63, 94, 0.35)'
-        : zoneIdx === 0
-        ? 'rgba(52, 211, 153, 0.32)'
-        : zoneIdx === 1
-        ? 'rgba(168, 85, 247, 0.34)'
-        : zoneIdx === 2
-        ? 'rgba(251, 191, 36, 0.38)'
-        : zoneIdx === 3
-        ? 'rgba(56, 189, 248, 0.35)'
-        : 'rgba(232, 121, 249, 0.38)';
-      ctx.fillStyle = conduitColor;
-      ctx.fillRect(px + 15, py + 14, 6, pillarH - 24);
-
-      // Zone 1 Stormcrag Brazier Flame on top of pillars
-      if (zoneIdx === 1 && i % 2 === 0) {
-        ctx.fillStyle = '#f97316';
-        ctx.fillRect(px + 11, py - 18, 14, 8);
-        ctx.fillStyle = '#fde047';
-        ctx.fillRect(px + 14, py - 22, 8, 5);
+  // Zone-Specific Weather & Ambient Parallax Particles (Always rendered over scene)
+  for (let w = 0; w < 20; w++) {
+    if (zoneIdx === 0) {
+      // Zone 0: Floating Emerald/Gold Bioluminescent Fireflies
+      const fx = (w * 73 + Math.sin(time * 1.5 + w) * 28) % width;
+      const fy = (height - 25) - ((w * 29 + time * 16 * pSpeed) % (height - 40));
+      ctx.fillStyle = w % 2 === 0 ? 'rgba(52, 211, 153, 0.85)' : 'rgba(253, 224, 71, 0.85)';
+      ctx.fillRect(fx, fy, 3, 3);
+    } else if (zoneIdx === 1) {
+      // Zone 1: Slanted Blizzard Snowflakes & Occasional Purple Lightning
+      const sx = (w * 67 - time * 85 * pSpeed) % width;
+      const sy = (w * 41 + time * 65 * pSpeed) % height;
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.85)';
+      ctx.fillRect(sx < 0 ? sx + width : sx, sy, 3, 3);
+      if (w === 0 && Math.floor(time * 4) % 9 === 0) {
+        ctx.strokeStyle = 'rgba(192, 132, 252, 0.65)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(width * 0.65, 0);
+        ctx.lineTo(width * 0.62, horizonY * 0.45);
+        ctx.lineTo(width * 0.66, horizonY * 0.55);
+        ctx.lineTo(width * 0.61, horizonY);
+        ctx.stroke();
       }
-    }
-
-    // Zone-Specific Weather & Ambient Particles (0.65x Layer)
-    for (let w = 0; w < 18; w++) {
-      if (zoneIdx === 0) {
-        // Zone 0: Floating Emerald/Gold Fireflies
-        const fx = (w * 73 + Math.sin(time * 1.5 + w) * 28) % width;
-        const fy = (horizonY - 15) - ((w * 29 + time * 14) % (horizonY - 25));
-        ctx.fillStyle = w % 2 === 0 ? '#34d399' : '#fde047';
-        ctx.fillRect(fx, fy, 3, 3);
-      } else if (zoneIdx === 1) {
-        // Zone 1: Slanted Blizzard Snowflakes & Occasional Purple Lightning
-        const sx = (w * 67 - time * 85) % width;
-        const sy = (w * 41 + time * 65) % horizonY;
-        ctx.fillStyle = '#e0f2fe';
-        ctx.fillRect(sx < 0 ? sx + width : sx, sy, 3, 3);
-        if (w === 0 && Math.floor(time * 4) % 9 === 0) {
-          ctx.strokeStyle = 'rgba(192, 132, 252, 0.65)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(width * 0.65, 0);
-          ctx.lineTo(width * 0.62, horizonY * 0.45);
-          ctx.lineTo(width * 0.66, horizonY * 0.55);
-          ctx.lineTo(width * 0.61, horizonY);
-          ctx.stroke();
-        }
-      } else if (zoneIdx === 2) {
-        // Zone 2: Ascending Golden Aether Motes
-        const ax = (w * 83 + time * 18) % width;
-        const ay = horizonY - ((w * 37 + time * 22) % (horizonY - 20));
-        ctx.fillStyle = 'rgba(253, 224, 71, 0.65)';
-        ctx.fillRect(ax, ay, 3, 3);
-      } else if (zoneIdx === 3) {
-        // Zone 3: Diagonal Shooting Starfall Meteors
-        if (w < 6) {
-          const cycle = (time * 180 + w * 210) % (width + 400);
-          const mx = width + 100 - cycle;
-          const my = (cycle * 0.35 + w * 45) % (horizonY - 20);
-          ctx.strokeStyle = 'rgba(125, 211, 252, 0.7)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(mx, my);
-          ctx.lineTo(mx + 32, my - 12);
-          ctx.stroke();
-        }
-      } else {
-        // Zone 4: Rising Abyssal Singularity Shards
-        const vx = (w * 79 + Math.cos(time * 2 + w) * 20) % width;
-        const vy = horizonY - ((w * 31 + time * 36) % (horizonY - 10));
-        ctx.fillStyle = w % 2 === 0 ? '#c084fc' : '#fbbf24';
-        ctx.fillRect(vx, vy, 4, 4);
+    } else if (zoneIdx === 2) {
+      // Zone 2: Ascending Golden Aether Motes
+      const ax = (w * 83 + time * 18 * pSpeed) % width;
+      const ay = height - ((w * 37 + time * 22 * pSpeed) % (height - 30));
+      ctx.fillStyle = 'rgba(253, 224, 71, 0.72)';
+      ctx.fillRect(ax, ay, 3, 3);
+    } else if (zoneIdx === 3) {
+      // Zone 3: Diagonal Shooting Starfall Meteors
+      if (w < 6) {
+        const cycle = (time * 180 * pSpeed + w * 210) % (width + 400);
+        const mx = width + 100 - cycle;
+        const my = (cycle * 0.35 + w * 45) % (horizonY + 30);
+        ctx.strokeStyle = 'rgba(125, 211, 252, 0.75)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(mx, my);
+        ctx.lineTo(mx + 32, my - 12);
+        ctx.stroke();
       }
+    } else {
+      // Zone 4: Rising Abyssal Singularity Shards
+      const vx = (w * 79 + Math.cos(time * 2 + w) * 20) % width;
+      const vy = height - ((w * 31 + time * 36 * pSpeed) % (height - 20));
+      ctx.fillStyle = w % 2 === 0 ? 'rgba(192, 132, 252, 0.85)' : 'rgba(251, 191, 36, 0.85)';
+      ctx.fillRect(vx, vy, 4, 4);
     }
   }
 
   // ============================================================================
-  // 4. FOREGROUND BATTLE FLOOR (1.0x PARALLAX SPEED) — SWAPPABLE OR PROCEDURAL
+  // 4. FOREGROUND BATTLE FLOOR (1.0x PARALLAX SPEED) — ONLY WHEN PROCEDURAL FALLBACK
   // ============================================================================
   if (zoneAsset.floorImg && zoneAsset.floorImg.complete && zoneAsset.floorImg.naturalWidth > 0) {
-    ctx.drawImage(zoneAsset.floorImg, 0, horizonY, width, height - horizonY);
-  } else {
+    if (pSpeed > 1.05) {
+      const floorScrollX = (time * 32 * pSpeed) % width;
+      ctx.drawImage(zoneAsset.floorImg, -floorScrollX, 0, width, height);
+      ctx.drawImage(zoneAsset.floorImg, width - floorScrollX, 0, width, height);
+    } else {
+      ctx.drawImage(zoneAsset.floorImg, 0, 0, width, height);
+    }
+  } else if (!hasFullZoneBg) {
     const floorGrad = ctx.createLinearGradient(0, horizonY, 0, height);
     if (isBerserk) {
       floorGrad.addColorStop(0, '#1c0915');
@@ -1316,6 +1246,65 @@ export function renderBattlefieldCanvas(
       ctx.fillStyle = '#fde047';
       ctx.fillText(`✦ ${ft.subtext} ✦`, 0, -16);
     }
+    ctx.restore();
+  });
+
+  // ============================================================================
+  // 6. PHYSICAL LOOT DROPS & RARITY LIGHT PILLARS (BLUE = R, PURPLE = SR, GOLD = SSR)
+  // ============================================================================
+  lootDrops.forEach((drop) => {
+    ctx.save();
+    const alpha = Math.min(1, (drop.life / drop.maxLife) * 2.2);
+    ctx.globalAlpha = Math.max(0, alpha);
+
+    const pillarColor =
+      drop.rarity === 'SSR' ? '#fbbf24' : drop.rarity === 'SR' ? '#c084fc' : '#38bdf8';
+    const pillarRgb =
+      drop.rarity === 'SSR'
+        ? '251, 191, 36'
+        : drop.rarity === 'SR'
+        ? '192, 132, 252'
+        : '56, 189, 248';
+
+    // 1. Vertical Rarity Light Pillar rising from groundY
+    const pillarH = drop.rarity === 'SSR' ? 140 : drop.rarity === 'SR' ? 105 : 75;
+    const pilGrad = ctx.createLinearGradient(drop.x, drop.groundY - pillarH, drop.x, drop.groundY);
+    pilGrad.addColorStop(0, `rgba(${pillarRgb}, 0)`);
+    pilGrad.addColorStop(0.55, `rgba(${pillarRgb}, 0.28)`);
+    pilGrad.addColorStop(1, `rgba(${pillarRgb}, 0.78)`);
+    ctx.fillStyle = pilGrad;
+    ctx.fillRect(drop.x - 12, drop.groundY - pillarH, 24, pillarH);
+
+    // 2. Ground Impact Ring
+    ctx.strokeStyle = pillarColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(drop.x, drop.groundY, 18, 6, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 3. Bouncing Item Icon (.webp) or glowing crystal fallback
+    const iconImg = getCachedCanvasImage(drop.iconUrl);
+    const bobOffset = drop.y >= drop.groundY - 1 ? Math.sin(time * 6 + drop.id) * 3 : 0;
+    const drawY = Math.round(drop.y + bobOffset);
+
+    if (iconImg) {
+      ctx.drawImage(iconImg, Math.round(drop.x - 16), Math.round(drawY - 30), 32, 32);
+    } else {
+      drawVoxelBox(ctx, drop.x - 8, drawY - 22, 16, 16, 6, pillarColor);
+    }
+
+    // 4. Floating Item Name Plate
+    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    const textW = ctx.measureText(drop.label).width + 10;
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+    ctx.fillRect(Math.round(drop.x - textW / 2), Math.round(drawY - 46), Math.round(textW), 14);
+    ctx.strokeStyle = pillarColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(drop.x - textW / 2), Math.round(drawY - 46), Math.round(textW), 14);
+    ctx.fillStyle = pillarColor;
+    ctx.fillText(drop.label, drop.x, drawY - 35);
+
     ctx.restore();
   });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ELEMENT_META, ElementType, FORMATIONS, getFormationRowBonuses, RESONATORS, ResonatorData } from '../data/resonators.ts';
 import { BLESSING_CARDS, EQUIPMENT_SETS, getEnhanceRule } from '../data/equipment.ts';
-import { drawPixelHeroSprite, drawPixelTarotCard, drawPixelTarotCardBack } from '../engine/pixelRenderer.ts';
+import { drawPixelHeroSprite } from '../engine/pixelRenderer.ts';
 import { getRecommendedCounterElement } from '../engine/combatEngine.ts';
 
 export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: string }> = ({ hero, className = '' }) => {
@@ -124,6 +124,26 @@ export const ResonatorSplashArt: React.FC<{ hero: ResonatorData; className?: str
           <path d="M245,110 Q315,125 285,195 Q255,155 230,135 Z" fill="#f43f5e" />
         </g>
       )}
+      {(hero.id === 'H19' || hero.id === 'H22') && (
+        <g>
+          <line x1="252" y1="95" x2="235" y2="360" stroke="#bae6fd" strokeWidth="5" />
+          <polygon points="252,65 272,95 252,125 232,95" fill="#e0f2fe" stroke="#38bdf8" strokeWidth="2" />
+          <circle cx="252" cy="95" r="22" fill="none" stroke="#7dd3fc" strokeWidth="1.5" strokeDasharray="3 3" />
+        </g>
+      )}
+      {hero.id === 'H20' && (
+        <g>
+          <line x1="250" y1="100" x2="232" y2="360" stroke="#6ee7b7" strokeWidth="5.5" />
+          <circle cx="250" cy="92" r="20" fill="#10b981" fillOpacity="0.35" stroke="#a7f3d0" strokeWidth="2" />
+          <path d="M235,88 Q250,62 265,88 Q250,110 235,88 Z" fill="#ecfdf5" />
+        </g>
+      )}
+      {hero.id === 'H21' && (
+        <g>
+          <line x1="250" y1="96" x2="235" y2="358" stroke="#fb7185" strokeWidth="5.5" />
+          <polygon points="250,64 268,94 250,120 232,94" fill="#f43f5e" stroke="#fecdd3" strokeWidth="2" />
+        </g>
+      )}
     </svg>
   );
 };
@@ -169,30 +189,16 @@ export const PixelTarotCardCanvas: React.FC<{
   arcanaId: string;
   className?: string;
 }> = ({ arcanaId, className = 'w-16 h-20' }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    let animId = 0;
-    const start = performance.now();
-    const render = (now: number) => {
-      const tick = (now - start) / 1000;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        drawPixelTarotCard(canvas, arcanaId, tick);
-      }
-      animId = requestAnimationFrame(render);
-    };
-    animId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animId);
-  }, [arcanaId]);
+  const cardSpec = BLESSING_CARDS.find((b) => b.id === arcanaId);
+  const numStr = arcanaId.replace('ARCANA_', '').padStart(2, '0');
+  const artUrl = cardSpec?.artUrl || `/assets/tarot/arcana_${numStr}.webp`;
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={32}
-      height={40}
+    <img
+      src={artUrl}
+      alt={cardSpec?.name || arcanaId}
       style={{ imageRendering: 'pixelated' }}
-      className={`select-none shrink-0 rounded-sm shadow-md ${className}`}
+      className={`select-none shrink-0 rounded-sm shadow-md object-contain ${className}`}
     />
   );
 };
@@ -200,30 +206,12 @@ export const PixelTarotCardCanvas: React.FC<{
 export const PixelTarotCardBackCanvas: React.FC<{
   className?: string;
 }> = ({ className = 'w-16 h-20' }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    let animId = 0;
-    const start = performance.now();
-    const render = (now: number) => {
-      const tick = (now - start) / 1000;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        drawPixelTarotCardBack(canvas, tick);
-      }
-      animId = requestAnimationFrame(render);
-    };
-    animId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animId);
-  }, []);
-
   return (
-    <canvas
-      ref={canvasRef}
-      width={32}
-      height={40}
+    <img
+      src="/assets/tarot/card_back.webp"
+      alt="Tarot Card Back"
       style={{ imageRendering: 'pixelated' }}
-      className={`select-none shrink-0 rounded-sm shadow-md ${className}`}
+      className={`select-none shrink-0 rounded-sm shadow-md object-contain ${className}`}
     />
   );
 };
@@ -454,7 +442,7 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               Chrono Spire: Starfall Protocol — Official Game Wiki & Balance Sheet (v2.3)
             </h2>
             <p className="text-xs text-slate-400">
-              Single Source of Truth: 23 Resonators (5 R Starter · 6 SR · 12 SSR) · Natural Cycle (🔥&gt;❄️&gt;🌪️&gt;⚡&gt;🔥, ☀️↔🌑) · 5-Zone Parallax
+              Single Source of Truth: 27 Resonators (5 R Starter · 7 SR · 15 SSR) · 10-Star Shard Ascension (5★ Gold ➔ A5★ Awakened) · Single-Tier 5-Floor Tarot
             </p>
           </div>
           <button
@@ -466,10 +454,10 @@ export const WikiModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-8 text-xs text-slate-300">
-          {/* Section 1: 23 Resonators Base Stats Table */}
+          {/* Section 1: 27 Resonators Base Stats Table */}
           <section>
             <h3 className="text-sm font-semibold text-amber-300 mb-3">
-              01. Base Stats & 23 Resonator Roster (5 Starter R · 6 SR · 12 SSR)
+              01. Base Stats &amp; 27 Resonator Roster (5 Starter R · 7 SR · 15 SSR including Single/AoE Healers)
             </h3>
             <div className="overflow-x-auto border border-slate-800 rounded-lg">
               <table className="w-full text-left border-collapse font-mono tabular-nums">

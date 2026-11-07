@@ -1,80 +1,75 @@
-# Starfall Card Reveal Motion, Borderless Dragging & 2.5D Battlefield Formation Perspective
+# Fix UI `.webp` Asset Sources & 5-Zone Battle Background Rendering
 
-This plan covers the three targeted refinements requested for **Chrono Spire: Resonator Gambit**: enhancing the **Starfall Card Reveal Modal** with Framer Motion staggered bottom-up entrance animations, removing borders while dragging in **Heroes & Gambit**, and aligning the **Active Tower Squad & Formation** preview perspective with the **Tower Battle** 2.5D battlefield layout.
+Resolves all mismatched `.webp` icon paths across the Merchant Hub, Summon Exchange, Sanctuary Modal, and Equipment/Forge views, while upgrading the 5-Zone Battle Canvas to render each zone's clean `full_reference.webp` artwork with atmospheric parallax effects.
 
----
-
-### User Review & Critical Decisions
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> All three requirements are clearly specified and map directly to the existing UI and combat engine perspective:
-
-- **Confirmed Decision 1 — Framer Motion Staggered Bottom-Up Card Reveal (`Starfall Card Reveal Modal`)**: Wrap the reveal modal overlay and card grid with Framer Motion (`AnimatePresence` + `motion.div` container and card item variants) so the modal fades in smoothly and each reveal card flies up from the bottom of the screen (`y: 160, opacity: 0, scale: 0.88` → `y: 0, opacity: 1, scale: 1`) with a staggered delay (`staggerChildren: 0.075` / `delay: i * 0.075`) and spring physics.
-- **Confirmed Decision 2 — Borderless Dragging in `Heroes & Gambit`**:
-  - Remove the outer box/border (`border-2`, card frame background) from the floating 2D Combat Pixel Sprite drag ghost (`draggingHero`) so only the borderless 2D Combat Pixel Sprite (`<PixelPreviewCanvas />`) and floating name/drop badge follow the cursor.
-  - Remove the slot container border outlines (`border`, `border-sky-400/45`, `border-amber-300`, `ring-2`) on formation slots during dragging so slots remain completely borderless (indicating drop target hover via pedestal ellipse glow and subtle scale only).
-- **Confirmed Decision 3 — Match `Active Tower Squad & Formation` Layout Perspective to `Tower Battle`**:
-  - In **Tower Battle**, the 2.5D battlefield floor places **Back Row** on the left (`x = 150`) and **Front Row** on the right (`x = 290`) inside a perspective tactical ellipse ring, divided by an angled dashed midline, with heroes in each row stacked **vertically** (`top` to `bottom`, 1 to 3 units per column) with slight isometric depth stagger.
-  - Update the **Active Tower Squad & Formation** preview box in **Heroes & Gambit** to use the exact same 2.5D battlefield perspective: an elliptical tactical arena floor ring, angled dashed midline divider, **Back Row (+ATK%)** stacked vertically on the left, and **Front Row (+DEF%)** stacked vertically on the right with isometric X-depth offset per slot.
+> Confirmed decisions from clarification:
+> - **Fix Every Wrong `.webp` Path in App**: Audit and correct all mismatched or missing `.webp` icon bindings across Merchant Hub (`GOLD`, `STARFALL`, `ARENA`, `GUILD`), Summon Starfall Exchange Modal, Sanctuaries & Challenges Modal, and Equipment/Forge `getGearItemIconUrl` resolution, plus clean baked-in checkerboard/matte artifacts on the navigation `.webp` icons.
+> - **5-Zone Battle Background Rendering**: Render each zone's clean `full_reference.webp` (`/assets/backgrounds/zone1_forest..zone5_space/full_reference.webp`) across the full canvas with horizontal parallax scrolling and procedural atmospheric effects instead of the cutout/smeared `layer1..4.webp` slices.
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
 - **What It Does**:
-  1. Makes 1x and 10x gacha pulls in the **Starfall Card Reveal Modal** feel dynamic and tactile via Framer Motion staggered bottom-up entrance animations.
-  2. Eliminates box borders around both the floating 2D combat sprite ghost and formation slots while dragging in **Heroes & Gambit**.
-  3. Unifies the visual mental model between **Heroes & Gambit** and **Tower Battle** by rendering the **Active Tower Squad & Formation** preview with the exact same 2.5D battlefield floor perspective and vertical column-row arrangement used in live combat.
-- **Target Audience / Persona**: Players organizing their 5-hero squad formation and summoning resonators.
-- **Key Value**: Consistent spatial perspective between squad setup and combat, cleaner borderless drag-and-drop visuals, and punchier gacha card reveals.
+  1. Fixes the 5-Zone Spire Battle background in the canvas renderer so each zone (`zone1_forest`, `zone2_mountain`, `zone3_cloudsea`, `zone4_orbit`, `zone5_space`) loads and renders its seamless `full_reference.webp` scene with parallax motion and zone-specific atmospheric particles, eliminating rectangular sky/cloud cutout boxes, inpainting smears, and squished vertical slices.
+  2. Fixes all wrong `.webp` icon sources across the UI so every currency, shop item, weapon, armor, ring, core sigil, dungeon sanctuary, and navigation button displays its exact matching `.webp` asset.
+- **Target Audience / Persona**: Players navigating Spire combat, equipping/forging relics, and trading in the Merchant Hub & Starfall Exchange.
+- **Key Value**: Eliminates visual background glitches in combat and ensures 100% accurate `.webp` icon representation across every modal and tab.
 
 ---
 
-### 2. User Experience & Visual Design
+## 2. User Experience & Visual Design
 
 - **Key User Flows**:
-  1. **Starfall Card Reveal Flow**: Clicking `[1x SUMMON]` or `[10x SUMMON]` opens the `Starfall Card Reveal Modal`. An `AnimatePresence` backdrop and `motion.div` card grid animate the cards flying in from the bottom of the viewport one after another (`staggerChildren: 0.075s`, spring damping `20`, stiffness `260`).
-  2. **Borderless Hold-to-Drag Flow**: Pressing and holding an unlocked hero card in **Heroes & Gambit** spawns the floating 2D Combat Pixel Sprite directly under the cursor without any outer rectangular card border or frame, and formation slots highlight only their ground pedestal ellipse without rectangular slot borders.
-  3. **2.5D Battlefield Formation Perspective**: Looking at **Active Tower Squad & Formation** in **Heroes & Gambit** mirrors the left-half of the **Tower Battle** canvas:
-     - Outer 2.5D perspective elliptical floor ring (`rgba(56, 189, 248, 0.25)` border + radial glow).
-     - **Back Row (+ATK%)** column on the Left, stacking its 2–3 pedestals vertically from top to bottom with slight isometric slant.
-     - Angled dashed tactical midline (`skew-x-[-10deg]`) separating Back Row and Front Row, matching the canvas `moveTo(235, horizonY + 12) -> lineTo(195, height - 12)` divider.
-     - **Front Row (+DEF%)** column on the Right, stacking its 2–3 pedestals vertically from top to bottom facing right toward the boss side.
+  - **5-Zone Spire Combat Background**: As players progress through Floors 1–500 (Zone 1 Forest -> Zone 2 Mountain -> Zone 3 Cloudsea -> Zone 4 Orbit -> Zone 5 Space), the battle canvas renders `full_reference.webp` at full canvas aspect ratio with smooth horizontal parallax wrapping and atmospheric particle overlays.
+  - **Merchant Hub (4 Tabs)**:
+    - *General Gold Shop*: `1x Dungeon Sweep Ticket` and `10x Dungeon Sweep Bundle` both use `/assets/ui/sweep_ticket.webp`; `Masterwork Forge Catalyst` uses `/assets/ui/shop_failstack_catalyst.webp`; `Hero Soul Shard Chest` uses `/assets/ui/shop_hero_shard_chest.webp`.
+    - *Starfall Exchange*: `5★ Signature Relic` uses the featured hero's role-matched Starfall weapon `.webp` (`getGearIconUrl('Starfall Executioner', 'Weapon', role)`); `Featured Sovereign Contract` and `Wishlist #1 SSR Crest` use `/assets/ui/shop_hero_shard_chest.webp`; `Reforge & Catalyst Chest` uses `/assets/ui/shop_reforge_stone.webp` & `/assets/ui/shop_relic_chest.webp`.
+    - *Arena Armory & Guild Treasury*: All 4 cards display their matching `.webp` icons (`starlight_gem.webp`, `gold.webp` + `sweep_ticket.webp`, `sigil_cataclysmic_core.webp`, and `time_shard.webp`), and the 4 shop tab headers display their `.webp` currency icons.
+  - **Equipment & Forge (`[AUTO-EQUIP BEST]` & Inventory Bag)**:
+    - `getGearItemIconUrl` dynamically resolves from `(gear.set, gear.slot, gear.weaponRole, gear.sigilTrait?.id)` so changing an item's set (e.g., via `[AUTO-EQUIP BEST]` or Guild Raid Exotic Voidweaver Core) immediately updates its `.webp` icon.
+    - Clean fallback weapon `.webp` selection (`radiant_weapon_ranged.webp` and `volatus_weapon_melee.webp`) avoids solid-black interior fills.
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Crisp 16-bit dark-fantasy pixel art (`image-rendering: pixelated`) over deep astral slate (`#070a14` / `#0a0d18`) with luminous gold (`#fbbf24`) and arcane violet (`#a855f7`) accents.
+  - *Typography & Hierarchy*: `Cinzel` display headers, `Plus Jakarta Sans` UI body, and `JetBrains Mono` (`tabular-nums`) for all counters, timers, and stat readouts.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1 — Container + Item Variants in `Starfall Card Reveal Modal`**
-  - *Chosen Approach*: Use `AnimatePresence` around the modal and explicit Framer Motion `variants` (`hidden` → `visible` with `staggerChildren: 0.075`) on the grid container and each card (`y: 160` → `0`, `opacity: 0` → `1`, `scale: 0.88` → `1`).
-  - *Why*: Guarantees smooth, deterministic stagger timing for both 1x and 10x pulls without CSS transition conflicts on initial mount.
-- **Decision 2 — Pure Sprite Ghost & Pedestal-Only Highlighting During Drag**
-  - *Chosen Approach*: Strip `border-2 bg-slate-950/90` from the floating drag ghost container and remove `border` classes from the formation slot wrapper in `renderSlotPedestal`.
-  - *Why*: Keeps the 2D pixel character sprite clean as if lifting the unit directly onto the battlefield floor.
+- **Decision 1: Full-Reference 16:9 Zone Background with Parallax & Atmospheric FX**
+  - *Chosen Approach*: Load `/assets/backgrounds/${folder}/full_reference.webp` as the primary full-canvas background for Zones 1–5 with horizontal parallax tiling and procedural atmospheric particles/lighting.
+  - *Why*: The individual `layer1..3.webp` files contain rectangular sky/cloud bounding boxes around foreground pillars and vertical inpainting smears that clash when scrolled at different speeds, while `layer4_floor.webp` has 70% top transparency that squishes when drawn into `horizonY..height`. `full_reference.webp` is crisp, complete, and artifact-free across all 5 zones.
+- **Decision 2: Dynamic Gear `.webp` Resolution in `getGearItemIconUrl`**
+  - *Chosen Approach*: Compute the canonical `.webp` path from `getGearIconUrl(gear.set, gear.slot, gear.weaponRole, gear.sigilTrait?.id)` first rather than returning a cached `gear.iconUrl` property.
+  - *Why*: Ensures that existing items in `localStorage`, items mutated by `[AUTO-EQUIP BEST]`, and shop-crafted relics always render the exact `.webp` icon matching their current set, slot, weapon role, and sigil trait.
 
 ---
 
-### 4. Technical Architecture & Data Strategy *(Technical Reference)*
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                           App Shell & State                                │
-├─────────────────────────────────────┬──────────────────────────────────────┤
-│     Heroes & Gambit Tab             │     Starfall Card Reveal Modal       │
-│  ┌───────────────────────────────┐  │  ┌────────────────────────────────┐  │
-│  │ Borderless 2D Sprite Drag     │  │  │ AnimatePresence + motion.div   │  │
-│  │ • No box border on ghost      │  │  │ • Grid staggerChildren: 0.075s │  │
-│  │ • No slot border while drag   │  │  │ • Card initial: y:160, op:0    │  │
-│  └──────────────┬────────────────┘  │  │ • Card animate: y:0, op:1      │  │
-│                 ▼                   │  └────────────────────────────────┘  │
-│  ┌───────────────────────────────┐  │                                      │
-│  │ 2.5D Battlefield Perspective  │  │                                      │
-│  │ [Back Row]  ╱  [Front Row]    │  │                                      │
-│  │  (Vertical  ╱   (Vertical     │  │                                      │
-│  │   Stack)    ╱    Stack)       │  │                                      │
-│  │   Slot #4   ╱    Slot #1      │  │                                      │
-│  │   Slot #5   ╱    Slot #2      │  │                                      │
-│  │             ╱    Slot #3      │  │                                      │
-│  └───────────────────────────────┘  │                                      │
-└─────────────────────────────────────┴──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     ASSET MANIFEST & ICON RESOLVERS                      │
+│  • UI_ICONS (elem, role, rarity, nav, shop, currency, stars)             │
+│  • getGearIconUrl(set, slot, weaponRole, sigilTraitId)                   │
+│  • ZONE_PARALLAX_ASSETS (zone1..zone5 -> full_reference.webp)            │
+└───────────────────┬──────────────────────────────────┬───────────────────┘
+                    │                                  │
+                    ▼                                  ▼
+┌──────────────────────────────────────┐  ┌────────────────────────────────┐
+│       5-ZONE BATTLE CANVAS           │  │     REACT UI VIEWS & MODALS    │
+│  • Draws full_reference.webp across  │  │  • Top Bar & Bottom Nav Dock   │
+│    full (0, 0, width, height)        │  │  • Forge Paper Doll & Bag      │
+│  • Smooth horizontal parallax loop   │  │  • Grand Merchant Hub (4 Tabs) │
+│  • Zone atmospheric particle FX      │  │  • Summon & Sanctuary Modals   │
+└──────────────────────────────────────┘  └────────────────────────────────┘
 ```
+
+- **Interactive Component & State Mapping**:
+  - **5-Zone Parallax Preloader & Renderer**: Preloads `full_reference.webp` for all 5 zones at startup and draws the active zone's scene at full canvas height with seamless horizontal parallax wrapping during wave transitions.
+  - **Merchant Hub & Summon Exchange**: Binds each shop card and tab header to its exact `UI_ICONS` or `getGearIconUrl` `.webp` asset, and sets `set: 'Voidweaver'` on the Guild Treasury's `Yog-Sothoth Voidweaver Core`.
+  - **Equipment & Forge Auto-Equip**: Updates both `set` and `iconUrl` when `[AUTO-EQUIP BEST]` is clicked and resolves icons dynamically via `getGearIconUrl`.
