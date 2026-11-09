@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1794251974|19845013';
+const CACHE_VERSION = '1794260080|20706151';
 /** @type {string} */
 const CACHE_PREFIX = 'Chrono Spire Sta-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
