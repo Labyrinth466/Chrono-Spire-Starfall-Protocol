@@ -1,0 +1,61 @@
+name: Notify Discord on new web build
+
+# The Godot web export is pushed straight to gh-pages (GitHub Pages serves this branch), so the notification
+# lives here: wait until the site serves this build (build.txt), then post the play link to Discord.
+on:
+  push:
+    branches:
+      - gh-pages
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📢 Send Build Notification to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_BUILD_WEBHOOK }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMITTER: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Discord Webhook not set, skipping notification."
+            exit 0
+          fi
+          PLAY_URL="https://${OWNER,,}.github.io/${REPO}/"
+          BUILD=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/build.txt" || echo "")
+          STATUS=success
+          if [ -n "$BUILD" ]; then
+            STATUS=timeout
+            for i in $(seq 1 40); do  # Pages usually goes live within a minute or two
+              if [ "$(curl -fsSL "${PLAY_URL}build.txt?nocache=$i" || true)" = "$BUILD" ]; then STATUS=success; break; fi
+              sleep 15
+            done
+          fi
+          if [ "$STATUS" = "success" ]; then
+            COLOR=5763719
+            TITLE="🚀 New Game Build Available!"
+            DESC="ตัวเกมเวอร์ชันล่าสุดถูกอัปเดตเรียบร้อยแล้ว!\nสามารถคลิกปุ่มลิงก์ด้านล่างเพื่อเปิดทดลองเล่นได้ทันที"
+          else
+            COLOR=15105570
+            TITLE="⏳ Build pushed, site still updating"
+            DESC="อัปโหลดเวอร์ชันใหม่แล้ว แต่ GitHub Pages ยังอัปเดตไม่เสร็จ ลองเปิดลิงก์อีกครั้งในอีกสักครู่"
+          fi
+          jq -n \
+            --arg title "$TITLE" --arg desc "$DESC" --arg msg "${COMMIT_MSG:0:1000}" --arg user "$COMMITTER" \
+            --arg url "$PLAY_URL" --argjson color "$COLOR" \
+            '{
+              username: "Chrono Spire Deployer",
+              embeds: [{
+                title: $title,
+                description: $desc,
+                color: $color,
+                fields: [
+                  { name: "📝 Commit Note", value: $msg, inline: false },
+                  { name: "👤 Updated By", value: $user, inline: true },
+                  { name: "🕹️ Play Game Link", value: ("[👉 คลิกที่นี่เพื่อเปิดเล่นเกมบนเบราว์เซอร์](" + $url + ")"), inline: false }
+                ],
+                footer: { text: "Chrono Spire CI/CD • Godot Web Build" }
+              }]
+            }' | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"
